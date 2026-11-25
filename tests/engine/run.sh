@@ -16,3 +16,8 @@ done
 "$CC" -std=c99 -O2 -Wall -Iapp/dsp tests/engine/test_engine.c "$OUT"/brk.o "$OUT"/brk_fx.o "$OUT"/brk_synth.o \
     "$OUT"/adpcm.o "$OUT"/kick.o "$OUT"/perc.o "$OUT"/ovl.o "$OUT"/brk_math.o -lm -o "$OUT/test_engine"
 "$OUT/test_engine" "$OUT"
+# the BASS (bass.c) and its demo over the kit
+"$CC" -std=c99 -O2 -Wall -Wextra -Werror -Wdouble-promotion -Wfloat-conversion -Iapp/dsp -c app/dsp/bass.c -o "$OUT/bass.o"
+"$CC" -std=c99 -O2 -Wall -Iapp/dsp tests/engine/test_bass.c "$OUT"/bass.o "$OUT"/brk.o "$OUT"/brk_fx.o "$OUT"/brk_synth.o \
+    "$OUT"/adpcm.o "$OUT"/kick.o "$OUT"/perc.o "$OUT"/ovl.o "$OUT"/brk_math.o -lm -o "$OUT/test_bass"
+"$OUT/test_bass" "$OUT"

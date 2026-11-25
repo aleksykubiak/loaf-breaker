@@ -1,0 +1,44 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+/* The BASS: a monophonic bass voice in the kick's place (kick.h), played by the pattern's bass lane (a note, an
+ * ACCENT and a SLIDE on every step). One voice, made for acid, hardcore and sub lines:
+ *   OSC    a saw and a square (polyBLEP, WAVE blends them) and a sine SUB an octave down
+ *   FILTER a four-pole resonant low-pass (four TPT one-poles, a tanh in the loop): CUTOFF, RESO, ENV (how far the
+ *          filter envelope opens it), DECAY (that envelope's), KEYTRK
+ *   AMP    a fast attack, then a decay towards SUSTAIN while the gate is held; a release after it
+ *   ACCENT louder, the filter opened further and its decay shorter (the 303's accent), by ACCENT
+ *   SLIDE  a step marked SLIDE ties into the next one: no new attack, the pitch gliding over GLIDE
+ *   DRIVE  a soft clip after the filter, then the volume
+ * Platform-free like the kick and the drums: settings from the main loop (bass_set, read once a block), notes at
+ * sample offsets in the render. */
+#pragma once
+#include <stdint.h>
+
+enum { BS_WAVE, BS_SUB, BS_CUTOFF, BS_RESO, BS_ENV, BS_DECAY, BS_ACCENT, BS_GLIDE, BS_DRIVE, BS_SUSTAIN,
+       BS_KEYTRK, BS_PARAMS };
+extern const char *const BASS_PARAM_NAME[BS_PARAMS];
+
+typedef struct {
+    float p[BS_PARAMS];                  /* 0..1 each, BS_* */
+    float volume;                        /* 0..1: the mixer's BASS fader */
+} bass_t;
+
+#define BASS_PRESETS 6u
+extern const char *const BASS_PRESET_NAME[BASS_PRESETS];
+void bass_preset(bass_t *b, uint32_t i); /* a built-in sound (the volume kept) */
+void bass_defaults(bass_t *b);           /* ACID, volume 0.8 */
+float bass_cutoff_hz(float v);           /* CUTOFF's knob in Hz (40 .. 12 000, exponential) */
+float bass_decay_ms(float v);            /* DECAY's knob in ms (30 .. 2000) */
+float bass_glide_ms(float v);            /* GLIDE's knob in ms (5 .. 400) */
+
+/* a step's note: its MIDI note, its gate (how long it is held, in samples from its start; 0: until the next note),
+ * ACCENT and SLIDE (it ties into the next note) */
+typedef struct {
+    uint8_t note, accent, slide, rsv;
+    uint32_t gate;
+} bass_note_t;
+
+void bass_init(void);
+void bass_set(const bass_t *b);          /* main loop: read at the next render */
+void bass_panic(void);                   /* the voice silenced at once (stop) */
+/* render: n samples into out (overwritten); notes nt[0..nn-1] starting at the sample offsets at[0..nn-1] (rising) */
+void bass_render(float *out, uint32_t n, const uint16_t *at, const bass_note_t *nt, uint32_t nn);
