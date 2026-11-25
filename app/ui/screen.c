@@ -89,14 +89,16 @@ static int32_t gl_shift(int32_t row)     /* a band of rows: shifted, or not (a t
         return 0;
     return (int32_t)((h >> 8) % (uint32_t)(2 * gl_amt + 1)) - gl_amt;
 }
-static void grey_draw(const uint8_t *rle, uint32_t len, const uint16_t *pal, int32_t w, int32_t h, int32_t x0,
-                      int32_t y0)
+static int32_t pic_bar;                  /* BABSZTYL: the splash's BOOTING bar, its fill (pixels; 0: as the picture has it,
+                                          * empty), drawn over the picture's rows it covers (splash_data.h's SPLASH_BAR_*) */
+static void pic_draw(const uint8_t *rle, uint32_t len, const uint16_t *pal, int32_t w, int32_t x0, int32_t y0,
+                     int32_t r0, int32_t r1)   /* (BABSZTYL: rows r0..r1-1 alone, the bar's) */
 {
     int32_t r, sh;
-    for (r = 0; r < h; r += sh) {
+    for (r = r0; r < r1; r += sh) {
         uint32_t i;
         int32_t x = 0, row = 0;
-        sh = h - r < 60 ? h - r : 60;
+        sh = r1 - r < 60 ? r1 - r : 60;
         cv_begin(240, (uint32_t)sh, C_BLACK);
         for (i = 0; i < len && row < r + sh; i++) {
             uint32_t b = rle[i], c = b & 15u;
@@ -111,6 +113,16 @@ static void grey_draw(const uint8_t *rle, uint32_t len, const uint16_t *pal, int
                 row++;
             }
         }
+#ifdef SPLASH_BAR_X
+        if (pic_bar > 0) {               /* (BABSZTYL: the bar, filling as it boots) */
+            int32_t t = SPLASH_BAR_Y > r ? SPLASH_BAR_Y : r, b = SPLASH_BAR_Y + SPLASH_BAR_H;
+            if (b > r + sh)
+                b = r + sh;
+            if (t < b)
+                cv_rect(x0 + SPLASH_BAR_X, t - r, pic_bar < SPLASH_BAR_W ? pic_bar : SPLASH_BAR_W, b - t,
+                        SPLASH_BAR_FILL);
+        }
+#endif
         if (gl_amt) {                    /* (LOAF BREAKER: VHS: the tracking band rolling down, a smear of grey
                                           * noise, the row above it dark; specks here and there) */
             int32_t k;
@@ -129,12 +141,48 @@ static void grey_draw(const uint8_t *rle, uint32_t len, const uint16_t *pal, int
         cv_blit(0, (uint32_t)(y0 + r));
     }
 }
+static void grey_draw(const uint8_t *rle, uint32_t len, const uint16_t *pal, int32_t w, int32_t h, int32_t x0,
+                      int32_t y0)
+{
+    pic_draw(rle, len, pal, w, x0, y0, 0, h);
+}
 
 
 
 /* fm1-base's first screen at power-on, while the breaks are decoded (APP_SPLASH): the mark and the name (LOAF
- * BREAKER: its picture, nearly the whole screen, the version at the top right; held 1.5 s, app_frame) */
+ * BREAKER: its picture, nearly the whole screen, the version at the top right; held 1.5 s, app_frame. BABSZTYL: its
+ * picture (art/babsztyl_splash.jpg, tools/make_splash.py), the screen's width, at the top, its foot dark as the screen
+ * under it, the version there at the right; its BOOTING bar filling as it's held, full at 1.35 s) */
+#define SPLASH_Y 0                       /* (the picture's top row on the screen) */
+#define SPLASH_FULL 1350u                /* (ms: the bar full) */
 static uint32_t splash_t;                /* when it was drawn (0: gone) */
+static int32_t splash_fill(uint32_t age) /* the bar's fill at this age (pixels, 1.. at its start: never "empty") */
+{
+#ifdef SPLASH_BAR_W
+    if (age > SPLASH_FULL)
+        age = SPLASH_FULL;
+    return 1 + (int32_t)(age * (uint32_t)(SPLASH_BAR_W - 1) / SPLASH_FULL);
+#else
+    (void)age;
+    return 0;
+#endif
+}
+static void splash_bar(uint32_t age)     /* BABSZTYL: the bar's rows again, its fill as it is now */
+{
+#if CH_LOGO && defined(SPLASH_BAR_Y)
+    static int32_t shown;
+    int32_t f = splash_fill(age);
+    if (f == shown)
+        return;
+    shown = f;
+    pic_bar = f;
+    pic_draw(SPLASH_RLE, sizeof SPLASH_RLE, SPLASH_PAL, SPLASH_W, (240 - SPLASH_W) / 2, SPLASH_Y, SPLASH_BAR_Y,
+             SPLASH_BAR_Y + SPLASH_BAR_H);
+    pic_bar = 0;
+#else
+    (void)age;
+#endif
+}
 static void splash_glitch(uint32_t age)  /* LOAF BREAKER TEST: the start-up picture, its rows jumping, settling by 700 ms */
 {
 #if CH_LOGO
@@ -142,7 +190,9 @@ static void splash_glitch(uint32_t age)  /* LOAF BREAKER TEST: the start-up pict
     gl_seed = age / 40u;
     sfx_splash_d = (uint8_t)(2 + gl_amt / 4);   /* (LOAF BREAKER: its red off, the more as it jumps) */
     gl_band = age < 700u ? (int32_t)(age * (uint32_t)SPLASH_H / 560u) - 8 : -1;   /* (rolling down the picture) */
-    grey_draw(SPLASH_RLE, sizeof SPLASH_RLE, SPLASH_PAL, SPLASH_W, SPLASH_H, (240 - SPLASH_W) / 2, 240 - SPLASH_H);
+    pic_bar = splash_fill(age);          /* (BABSZTYL: the bar in it, as far as it's got) */
+    grey_draw(SPLASH_RLE, sizeof SPLASH_RLE, SPLASH_PAL, SPLASH_W, SPLASH_H, (240 - SPLASH_W) / 2, SPLASH_Y);
+    pic_bar = 0;
     gl_amt = 0;
     gl_band = -1;
     sfx_splash_d = 0u;
@@ -155,14 +205,16 @@ void app_splash(void)
     lcd_fill(0, 0, 240, 240, C_BLACK);
 #if CH_LOGO
     sfx_splash_d = 2u;                   /* (LOAF BREAKER: the picture's red two pixels off) */
-    grey_draw(SPLASH_RLE, sizeof SPLASH_RLE, SPLASH_PAL, SPLASH_W, SPLASH_H, (240 - SPLASH_W) / 2, 240 - SPLASH_H);
+    pic_bar = splash_fill(0u);
+    grey_draw(SPLASH_RLE, sizeof SPLASH_RLE, SPLASH_PAL, SPLASH_W, SPLASH_H, (240 - SPLASH_W) / 2, SPLASH_Y);
+    pic_bar = 0;
     sfx_splash_d = 0u;
-    {
+    if (SPLASH_Y + SPLASH_H <= 240 - 12) {
         char t[24];                     /* (a TEST's "0.268 TEST 12" too) */
         version_text(t);
-        cv_begin(240, 240 - SPLASH_H, C_BLACK);
-        cv_text(234 - text_w(&FONT_T, t), 1, &FONT_T, t, C_GRAY);
-        cv_blit(0, 0);
+        cv_begin(240, 240 - SPLASH_Y - SPLASH_H, C_BLACK);   /* (BABSZTYL: under the picture, at the right) */
+        cv_text(234 - text_w(&FONT_T, t), 240 - SPLASH_Y - SPLASH_H - 12, &FONT_T, t, C_GRAY);
+        cv_blit(0, SPLASH_Y + SPLASH_H);
     }
     splash_t = plat_ms() | 1u;
 #else
@@ -231,9 +283,10 @@ static void intro_draw(uint32_t now)
         text_cat(t, b ? b->name : "");
         cv_text((240 - text_w(&FONT_XS, t)) / 2, 2, &FONT_XS, t, C_GRAY);
         cv_text((240 - text_w(&FONT_T, "PRESS PLAY")) / 2, 20, &FONT_T, "PRESS PLAY", C_AMB);
-        cv_text((240 - text_w(&FONT_T, "BY FLEXOR - BASED ON CHOPPAH")) / 2, 36, &FONT_T,   /* (0.268, FLEXOR: his
-                                          * own firmware now, CHOPPAH credited) */
-                "BY FLEXOR - BASED ON CHOPPAH", C_DIM);
+        cv_text((240 - text_w(&FONT_T, "LOAF BREAKER BY FLEXOR")) / 2, 36, &FONT_T,   /* (0.268, FLEXOR: his
+                                          * own firmware now, CHOPPAH credited. BABSZTYL: its lettering says it's a fork
+                                          * of LOAF BREAKER built on CHOPPAH; LOAF BREAKER's author here) */
+                "LOAF BREAKER BY FLEXOR", C_DIM);
         cv_blit(0, 190);
         ui.redraw = 0u;
     }

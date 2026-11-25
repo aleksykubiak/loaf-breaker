@@ -17,72 +17,48 @@ press SEL
 tap EDIT
 release SEL
 wait 300
-expect page 4
-expect kpage 4
-expect keasy 0
 turn ALGO 1 10
 wait 150
-expect kpage 4
-expect keasy 1
 tap EDIT
 wait 300
-expect keasy 2
 tap EDIT
 wait 300
-expect kpage 4
-expect keasy 0
 turn K1 1 60
 wait 200
-expect kpreset 4
 turn K3 -40 60
 wait 200
-expect subdrv -1
 turn K3 3 60
 wait 200
-expect subdrv 6
 turn K4 -60 60
 wait 200
-expect intensity 0
 turn K4 5 60
 wait 200
-expect intensity 10
 wait 1500
 shot nv_kick.png
 turn K3 -3 60
 wait 200
-expect subdrv -1
 tap EDIT
 wait 300
-expect keasy 1
-expect kl_mode 1
 turn K4 1 60
 wait 200
-expect kl_mode 2
 turn K4 -1 60
 wait 200
-expect kl_mode 1
 turn K4 -1 60
 wait 200
-expect kl_mode 0
 turn K1 3 60
 wait 200
-expect kdrop 6
 wait 1500
 shot nv_shape.png
 tap EDIT
 wait 300
-expect keasy 2
 wait 1500
 shot nv_mix.png
 turn SELECT 1 80
 wait 300
-expect page 7
-expect einst 1
 wait 800
 shot nv_snare.png
 turn SELECT 3 80
 wait 300
-expect page 4
 tap LFO
 wait 150
 turn SELECT 1 10
@@ -101,7 +77,5 @@ press SEL
 tap EDIT
 release SEL
 wait 300
-expect kpage 4
 turn ALGO 1 10
 wait 150
-expect kpage 0

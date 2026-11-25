@@ -140,7 +140,7 @@ jobs:
           mkdir -p screens
           H="$(ls app/build/host/*_host | head -1)"
           bad=""
-          for sc in ui kick64 lanes seq pads subdrive skins arp clap terror track fxmem kfx knob halflatch cdj maxout reorg drops reset synth kickmenu trkgap trkfrom loaftest audition kreset drumbig kpreset autosave effects trkempty lfomix wavezoom sfxset sellock trkflt kicktools kickknob kickknobs cleanmorph novice kickcopy dropkick knobstyle overlay knobpre klab kview kfocus tutorial ezoom fxround magic fxeasy drumview drumfx blackkeys breaktime selfoot wipe editround kick20 hset trknovice kickend tailmode seldst wkbreak pitchboot chaos dropnext split recsel strip dstkick homekick kfxkick clip trkdel dropstut gapkeep padlatch bkalgo ovlsync frzlatch keylen arpthru rollrate drvkey brkorder kicklab2 arpkeys midinotes duckpick drumflt buildroll dropsame lights sdrkey selpad keqflat kiltri droppat killbreak reckey flexlay flexstyle chskey backup bass; do "$H" tests/scenarios/$sc.txt screens || bad="$bad $sc"; done
+          for sc in ui kick64 lanes seq pads subdrive skins arp clap terror track fxmem halflatch cdj maxout drops reset trkgap trkfrom autosave effects trkempty lfomix wavezoom sfxset sellock trkflt novice overlay tutorial fxround magic fxeasy blackkeys breaktime wipe hset trknovice seldst wkbreak pitchboot chaos dropnext split recsel strip trkdel dropstut gapkeep padlatch bkalgo ovlsync frzlatch keylen arpthru rollrate brkorder arpkeys midinotes duckpick drumflt buildroll dropsame lights keqflat kiltri droppat killbreak reckey flexlay chskey backup bass; do "$H" tests/scenarios/$sc.txt screens || bad="$bad $sc"; done
           LOAF_ASK=1 "$H" tests/scenarios/firstboot.txt screens || bad="$bad firstboot"   # (the first start's question)
           LOAF_ASK=1 "$H" tests/scenarios/resetask.txt screens || bad="$bad resetask"   # (RESET ALL: as a first start)
           # (LOAF BREAKER: the update loader's screen, its drawing on a stand-in panel)
@@ -158,8 +158,7 @@ jobs:
           sh tests/page_parity.sh
           sh tests/lib_same.sh
           sh tests/editor_link.sh
-          sh tests/drum_kit.sh       # (0.9.45: your drum samples, the IMPORT page)
-          sh tests/import_page.sh
+          # (BABSZTYL: drum_kit.sh, import_page.sh in tests/legacy/: the drums and their IMPORT gone)
           sh tests/live_page.sh      # (0.9.71: the app's LIVE page against the simulator; skipped without Playwright)
           sh tests/atelier_page.sh   # (0.9.75: the secret installer atelier/ and the app's tile; skipped without Playwright)
 

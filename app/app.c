@@ -16,9 +16,9 @@
 #include "brk_math.h"
 #include "brk_synth.h"
 #include "bass.h"                    /* the BASS (its lines: bline.c) */
-#include "kick.h"
+
 #include "ovl.h"
-#include "perc.h"
+
 #if defined(__has_include)
 #if __has_include("bank_data.h")
 #include "bank_data.h"
@@ -45,19 +45,17 @@ extern uint32_t lb_bank_len;
 #define BANK_PCM16(s) 0
 #endif
 #if CH_LOGO
-#include "splash_data.h"            /* LOAF BREAKER: the splash and the title (tools/make_egg.py) */
+#include "splash_data.h"            /* BABSZTYL: the splash and the title (tools/make_splash.py; LOAF BREAKER: make_egg.py) */
 #include "title_data.h"
 #include "face_data.h"              /* LOAF BREAKER (0.9.30): the face on VINYL BREAK's record (tools/make_face.py) */
 #endif
 
 /* ------------------------------------------------------------------ settings --- */
-#define SET_MAGIC 0x37504843u            /* "CHP7" (the soundboard gone, the drums and patterns in): another magic
-                                          * loads defaults */
+#define SET_MAGIC 0x31425342u            /* "BSB1" (the BASS's, the kick and the drums gone: their fields out; CHP7,
+                                          * LOAF BREAKER's, loads the defaults) */
 /* From CHP7 on the settings only grow at the end: a shorter save (an older firmware's) loads into the front and the
  * fields after it keep their defaults (SET_SIZE_MIN: CHP7's size; an append keeps it). A change that isn't an append
  * needs a new magic (and loses the saves). */
-typedef struct { perc_voice_t v[2]; float volume; } perc2_t;   /* LOAF BREAKER: the snare's and the hat's, as saves
-                                          * have them (perc_t has every drum now) */
 typedef struct {
     uint32_t magic;
     uint16_t tempo_x10;                  /* 400..3000 */
@@ -86,9 +84,6 @@ typedef struct {
     brk_padset_t pads;                   /* the pads' own settings (K1-K4 while a pad is held) */
     brk_keyset_t keys[BRK_KEYS];         /* each white key's loop: length, pitch, start, mode (K1-K4 while held) */
     brk_slicefx_t slx[BRK_KEYS];         /* each slice's own effect and level (a key held, FX: its other layer) */
-    kick_t kick;                         /* the kick (PRD K-*): its sound and level */
-    perc2_t perc;                        /* the snare and the hat (PRD K-10): their sounds and level (LOAF BREAKER:
-                                          * the others in pmore) */
     uint8_t rsv2[8];                     /* (v0.52's fills, gone; their bytes kept: older saves still load) */
     /* (appended 3 Nov 2026: the overlay effects, ARP's page, PRD B-52) */
     uint8_t ovl_amt[16];                 /* each white key's effect's amount, 0..100 (OV_*) */
@@ -126,17 +121,12 @@ typedef struct {
                                           * them through kmem_at, ksmem_at, kx_at, kxh_at, klmem_at */
 #define KMEM_A 10u                       /* (the first ten's arrays: their saves' layout kept) */
 #define KX_N 9u                          /* (each kick memory's own knobs: steps.kx) */
-    kick_t kmem[KMEM_A];                 /* KICK 1..10, each as left (PRESETS on KICK, SELECT on SEQ: nothing lost) */
     /* (appended: LOAF BREAKER's drums; an older save's: their first presets) */
-    perc_voice_t pmore[1];               /* the CLAP's sound (PV_CLAP; the STAB's: pstab) */
     /* (appended: LOAF BREAKER's snare, hat and clap memories, as the kick's; an older save's: their presets, its own
      * sound each one's first) */
 #define PERC_MEMS 10u
-    uint8_t pslot[3];                    /* the memory playing, PV_SNARE..PV_CLAP 0..9 (SNARE 1..10...): perc_voice() is
-                                          * it (the stab's: sslot) */
     uint8_t drop_brk;                    /* LOAF BREAKER (crossbreed): the break a drop brings in, 1.. (0: the same one;
                                           * MORE's K4; DBRK_NEXT, 0.9.71: the next one) */
-    perc_voice_t pmem[3][PERC_MEMS];     /* each as left (PRESETS on EDIT; the stab's: smem) */
     /* (appended: LOAF BREAKER's LIMIT; an older save's: off) */
     uint8_t comp;                        /* SEL + K3: COMP, the whole mix compressed, 0 off .. 100 (its threshold 0 ..
                                           * -36 dB; was LIMIT's drive) */
@@ -147,14 +137,12 @@ typedef struct {
     union {                              /* (LOAF BREAKER, 11 Nov 2026: the STAB's sound, unused since 0.209, holds the
                                           * black keys' layout: bk[0] BK_TAG, bk[1] the preset BKP_*, bk[2..12] the
                                           * CUSTOM layout, a function BKF_* each key; an older save's: CHOPPAH) */
-        perc_voice_t pstab_was;
         uint8_t bk[24];
     } bkeys;
     uint8_t leds[4];                     /* (the STAB's sslot, its memory 0..9, and 3 spare bytes until 0.9.56) LOAF
                                           * BREAKER (0.9.57, FLEXOR): SYSTEM › LIGHTS: [0] LED_TAG | GLOW (0 off .. 7),
                                           * [1] PULSE (LP_*), [2] PULSE ON (LO_*), [3] STYLE (LS_*); untagged (an older
                                           * save): the defaults, the lights as they were (led_cfg) */
-    perc_voice_t smem[PERC_MEMS];        /* its memories */
     /* (appended: LOAF BREAKER's DROP and TRACK, ENV's parts; an older save's: a 4-bar build into the next pattern) */
     uint8_t drop_bars;                   /* the build: DROP_BARS's index (0: none, the drop at the bar's end) */
     uint8_t drop_after;                  /* the pattern the drop brings in: 0 the next one, 1.. that one, DROP_SAME (0.9.55) the one playing */
@@ -182,10 +170,6 @@ typedef struct {
     uint8_t drop_riser;                  /* its rising noise, 0 none .. 100 (50: as it always was) */
     uint8_t drop_gap;                    /* silence before the drop: DROP_GAP's index (0 none) */
     /* (appended: LOAF BREAKER's kick SYNTH, EDIT KICK's SYNTH and SYNTH +; an older save's: as it always sounded) */
-    int8_t ksyn[KS_N];                   /* the kick playing's (kick.h KS_*: -50 .. +50, TUNE -12 .. +12) */
-    int8_t ksmem[KMEM_A][KS_N];          /* each kick memory's, as set.kmem */
-    uint8_t kbass[4];                    /* LOAF BREAKER TEST: the kick's BASS part: GLIDE, REV BASS, its START, its
-                                          * CURVE (0..100 each) */
     uint8_t drop_accel;                  /* (TEST) BUILD's tempo rise to the drop: 0 .. 30 % */
     uint8_t crt;                         /* GLO MORE K3 EFFECTS: the screen's effect, SFX_* (0 off, 1 CRT: an older
                                           * save's ON) */
@@ -404,51 +388,12 @@ static void led_defaults(void)
         led_put(j, LED_DEF[j]);
 }
 static uint32_t max_out_db(void) { return set.max_out ? (set.max_out - 1u > 12u ? 12u : set.max_out - 1u) : 3u; }
-static perc_voice_t *perc_voice(uint32_t v)   /* LOAF BREAKER: a drum's sound, PV_* (the snare and the hat in perc,
-                                          * the rest in pmore) */
-{
-    v %= PERC_VOICES;
-    static perc_voice_t none;            /* (PV_STAB: an empty place, silent; its bytes the black keys') */
-    return v < 2u ? &set.perc.v[v] : v == PV_CLAP ? &set.pmore[0] : &none;
-}
-/* LOAF BREAKER (11 Nov 2026): a drum's extras (PX_*: its drop, its saturation, LIFT, ROOM, BEGINNER's FX, its preset),
- * the memory playing's, in the MELODY's old place: smem, 240 bytes, three drums of ten memories of PX_N */
-_Static_assert(sizeof(((settings_t *)0)->smem) == 3u * PERC_MEMS * PX_N, "smem holds the drums' extras");
-static uint8_t *perc_xm(uint32_t v, uint32_t i) { return (uint8_t *)(void *)set.smem + ((v % 3u) * PERC_MEMS + i % PERC_MEMS) * PX_N; }
-static uint8_t *perc_x(uint32_t v) { return perc_xm(v, set.pslot[v % 3u]); }
-static uint8_t *perc_slot(uint32_t v)    /* its memory playing */
-{
-    v %= PERC_VOICES;
-    static uint8_t none;                 /* (PV_STAB: an empty place; its byte SYSTEM › LIGHTS' since 0.9.57) */
-    return v == PV_STAB ? &none : &set.pslot[v];
-}
-static perc_voice_t *perc_mem(uint32_t v, uint32_t i)   /* its memory i */
-{
-    v %= PERC_VOICES;
-    i %= PERC_MEMS;
-    return v == PV_STAB ? &set.smem[i] : &set.pmem[v][i];
-}
 static uint8_t set_dirty;
 static uint8_t foot_dirty;               /* a setting changed: the slicer's foot shows the new value */
 
-/* LOAF BREAKER: the KICK LAB (EDIT KICK's LAB section: TAIL, TAIL +, STACK, TOOLS), the kick playing's and each kick
- * memory's, as set.kick and set.kmem; their own store object (OBJ_KLAB). All 0: as the kicks always sounded */
-#define KLAB_MAGIC 0x31424C4Bu           /* "KLB1" */
-typedef struct {
-    uint32_t magic;
-    kick_lab_t cur;                      /* the kick playing's */
-    kick_lab_t mem[KMEM_A];              /* each kick memory's (KICK 1..10; 11..20: km2's) */
-} klab_obj_t;
-static klab_obj_t klab;
-static kick_t *kmem_at(uint32_t n);     /* (the kick memory n, 0..19, wherever it is kept: below) */
-static int8_t *ksmem_at(uint32_t n);
-static kick_lab_t *klmem_at(uint32_t n);
-static void km2_lab_clear(void);
-static uint8_t klab_solo;                /* STACK's SOLO (not saved): 0 both, 1 the attack, 2 the tail */
-/* LOAF BREAKER (0.9.45, FLEXOR's Kick Lab 2): each kick's TOK and TAIL GATE (kick.h kick_x2_t), KICK 1..20, their own
- * store object (OBJ_KX2: the KICK LAB's object kept as it was, so no save is lost); the kick playing's is its memory's
- * (kx2_at(set.kslot)). A save before them: all 0, every kick as it sounded */
-#define KX2_MAGIC 0x3258324Bu            /* "K2X2" */
+/* LOAF BREAKER (0.9.45): kx2, the SEL layer, the KITS' old bytes, each break's split, white keys and CHAOS: their own
+ * store object (OBJ_KX2). (Each kick's TOK and TAIL GATE, its first part, gone with the kick: K2X3) */
+#define KX2_MAGIC 0x3358324Bu            /* "K2X3" (K2X2: LOAF BREAKER's, with the kicks' part) */
 #if LB_BIG                               /* (LOAF BREAKER's VST: every break of the library its white keys and split; a
                                           * split's break B in 8 bits: sp 16-bit, bit 15 on, bits 8-9 the bars) */
 #define WK_NB 128u
@@ -465,7 +410,6 @@ typedef uint8_t sp_t;
 #endif
 typedef struct {
     uint32_t magic;
-    kick_x2_t m[KICK_MEMS];
     /* (appended, 0.9.49, FLEXOR: the SEL layer, in this object for the room the settings no longer have; a 0.9.45-48
      * save, shorter: none. selk: each black key's function pressed with SEL held or locked, 1 + BKF_*, 0 its own;
      * rsv: the room kept for SEL + the white keys, later) */
@@ -542,7 +486,6 @@ static int kx2_load(uint32_t n)
 #define kx2_size() plat_store_size(OBJ_KX2)
 #define kx2_load(n) plat_store_load(OBJ_KX2, &kx2, (n))
 #endif
-static kick_x2_t *kx2_at(uint32_t k) { return &kx2.m[k % KICK_MEMS]; }
 /* LOAF BREAKER (0.9.71, FLEXOR: each break its own white keys, "afin de mieux chopper"): set.keys holds the break
  * playing's (wk_brk), the others in kx2.wk, packed: LENGTH bits 0-3, DECAY 4-7, MODE 8-9, PITCH + 12 10-14, bit 15 set.
  * A break change stores the keys into their break and reads the next one's (wk_follow); SAVE keeps them all (OBJ_KX2) */
@@ -625,9 +568,8 @@ static void wk_follow(void)              /* (the keys to the break chosen, set.b
         brk_keyset(k, &set.keys[k]);
     }
 }
-static void kx2_defaults(void)           /* (the kicks' TOK and TAIL GATE; the SEL layer kept) */
+static void kx2_defaults(void)           /* (its tag; the SEL layer kept) */
 {
-    memset(&kx2.m, 0, sizeof kx2.m);
     kx2.magic = KX2_MAGIC;
 }
 /* LOAF BREAKER (0.9.58, FLEXOR): KILL BREAK, a black key: the break out, as K1 MODE says: FADE (over K2 TIME), CUT (at
@@ -734,31 +676,6 @@ static uint32_t selb_fn(uint32_t j)      /* (black key j's SEL function, 1 + BKF
     uint32_t f = j < 11u ? kx2.selk[j] : j == 11u ? kx2.selrec : 0u;   /* (the REC key, 11: its own since 0.9.70) */
     return f <= BKF_N ? f : 0u;
 }
-static void klab_defaults(void)
-{
-    memset(&klab, 0, sizeof klab);
-    km2_lab_clear();                     /* (KICK 11..20's too) */
-    klab.magic = KLAB_MAGIC;
-}
-static void klab_send(void)              /* the LAB to the engine, STACK's attack with it (its kick memory's) */
-{
-    uint32_t n = klab.cur.src ? (uint32_t)(klab.cur.src - 1u) % KICK_MEMS : 0u;
-    kick_set_lab(&klab.cur);
-    kick_set_x2(kx2_at(set.kslot));      /* (0.9.45: its TOK and TAIL GATE) */
-    if (!klab.cur.src)
-        kick_set_stack(0, 0, 0);
-    else if (n == set.kslot % KICK_MEMS)   /* (its own: the kick playing, as it is) */
-        kick_set_stack(&set.kick, set.ksyn, &klab.cur);
-    else
-        kick_set_stack(kmem_at(n), ksmem_at(n), klmem_at(n));
-    kick_set_solo(klab_solo);
-}
-/* LOAF BREAKER: the kick to the engine: the one playing (set.kick, its SYNTH set.ksyn), or with KICK MORPH up that
- * far towards kick memory kmorph_to: every level, pitch, decay, tone, effect setting, TERROR and SYNTH setting in
- * between; the layers' effects and TERROR + 's TYPE the nearer one's. CLEAN SUB with it */
-static int32_t morph_i(int32_t a, int32_t b, uint32_t m) { return a + (b - a) * (int32_t)m / 100; }
-/* LOAF BREAKER: TER (the tenth black key), as SUB's DRIVE: the kick's TERROR off, whatever its amount (kept as it is),
- * or on again; the kick's own (selk_hi bit 4, with its memory: kx_put), saved */
 static int bk_has(uint32_t f)            /* (a black key of the layout in use does f; 0.9.71, FLEXOR: or a key's SEL
                                           * function (SEL BLACK, the REC key's too), or the REC key's own: DST, DRV, SUB
                                           * switch there as well, their lights following) */
@@ -772,77 +689,9 @@ static int bk_has(uint32_t f)            /* (a black key of the layout in use do
             return 1;
     return rec_key_on() && rec_fn() == f;
 }
-#define terror_off ((set.selk_hi & 16u) && bk_has(BKF_DST))   /* (the kick's own DST switch, each kick its own (kx_put);
-                                          * 0.9.24: in either mode, where the layout has a DST key (BEGINNER keeps
-                                          * EXPERT's layout since 0.9.23); with none, the DISTO always heard) */
-#define drive_off ((set.selk_hi & 32u) && bk_has(BKF_DRV))   /* (LOAF BREAKER 0.9.43, FLEXOR: DRV, the kick's DRIVE
-                                          * (INTENSITY) off, its amount kept; each kick its own, as DST) */
-#define subfx_off ((set.selk_hi & 64u) && bk_has(BKF_SUB))   /* (LOAF BREAKER 0.9.43, FLEXOR: SUB, the kick's SUB FX (the
-                                          * SUB layer's effect, whichever) off, its settings kept; each kick its own) */
-static void kick_send(void)
-{
-    uint32_t m = set.kmorph > 100u ? 100u : set.kmorph, i, j;
-    if (!m) {
-        kick_t k = set.kick;
-        if (terror_off)
-            KICK_TERROR(&k) = 0u;
-        if (drive_off)
-            k.intensity = 0.0f;
-        if (subfx_off)
-            k.l[KL_SUB].fx = KFX_OFF;
-        kick_set(&k);
-        kick_set_synth(set.ksyn);
-    } else {
-        kick_t k = set.kick;
-        const kick_t *b = kmem_at(set.kmorph_to % KICK_MEMS);
-        int8_t sy[KS_N];
-        float t = (float)m * 0.01f;
-        for (i = 0; i < KICK_LAYERS; i++) {
-            kick_layer_t *l = &k.l[i];
-            const kick_layer_t *o = &b->l[i];
-            l->level += (o->level - l->level) * t;
-            l->pitch += (o->pitch - l->pitch) * t;
-            l->decay += (o->decay - l->decay) * t;
-            l->tone += (o->tone - l->tone) * t;
-            if (l->fx == o->fx) {
-                l->fa += (o->fa - l->fa) * t;
-                l->fb += (o->fb - l->fb) * t;
-                l->wet += (o->wet - l->wet) * t;
-            } else if (m >= 50u) {
-                l->fx = o->fx;
-                l->fa = o->fa;
-                l->fb = o->fb;
-                l->wet = o->wet;
-            }
-            for (j = 0; j < 3u; j++) {   /* (the TERRORs' bytes: the amounts 0..100, TYPE the nearer, the rest int8) */
-                int unsign = j == 0u && i != KL_GRIT, type = i == KL_GRIT && j == 2u;
-                if (type)
-                    l->rsv[j] = m >= 50u ? o->rsv[j] : l->rsv[j];
-                else if (unsign)
-                    l->rsv[j] = (uint8_t)morph_i(l->rsv[j], o->rsv[j], m);
-                else
-                    l->rsv[j] = (uint8_t)(int8_t)morph_i((int8_t)l->rsv[j], (int8_t)o->rsv[j], m);
-            }
-        }
-        k.intensity += (b->intensity - k.intensity) * t;
-        for (j = 0; j < KS_N; j++)
-            sy[j] = (int8_t)morph_i(set.ksyn[j], ksmem_at(set.kmorph_to % KICK_MEMS)[j], m);
-        if (terror_off)
-            KICK_TERROR(&k) = 0u;
-        if (drive_off)
-            k.intensity = 0.0f;
-        if (subfx_off)
-            k.l[KL_SUB].fx = KFX_OFF;
-        kick_set(&k);
-        kick_set_synth(sy);
-    }
-    kick_set_clean_sub((float)(set.csub > 100u ? 100u : set.csub) * 0.01f);
-    klab_send();
-}
-/* (0.9.39: the kick memories' first eleven, KICK 1-11, then again: PRESET's round with ROTTERDAM kept KICK 4, the start,
- * EARLY HC KICK 5; KICK 7 TERROR, KICK 8 SPINE as FLEXOR wanted them, 0.9.33) */
-static const uint8_t KMEM_ORD[KICK_PRESETS_ON] = {0u, 8u, 1u, 3u, 2u, 4u, 6u, 7u, 9u, 10u, 11u};
-static uint32_t kmem_pre(uint32_t k) { return KMEM_ORD[k % KICK_PRESETS_ON]; }
+#define terror_off ((set.selk_hi & 16u) && bk_has(BKF_DST))   /* (the BASS's DST switch: its DRIVE off) */
+#define drive_off ((set.selk_hi & 32u) && bk_has(BKF_DRV))   /* (DRV: the same, as LOAF BREAKER's DRV) */
+#define subfx_off ((set.selk_hi & 64u) && bk_has(BKF_SUB))   /* (SUB: the BASS's SUB off) */
 static void settings_defaults(void)
 {
     uint32_t k;
@@ -850,7 +699,6 @@ static void settings_defaults(void)
     for (k = 0; k < sizeof set; k++)     /* (every field: no leftovers from a save that didn't load) */
         z[k] = 0u;
     set.magic = SET_MAGIC;
-    set.kbass[2] = set.kbass[3] = 50u;
     set.scrfx = 50u;                     /* (the screen effect's AMOUNT: half) */
     set.sfx_on = 0u;                     /* (the screen effects: none at the start and after RESET ALL; the site's
                                           * screenshots clean) */
@@ -887,27 +735,8 @@ static void settings_defaults(void)
         brk_keyset_defaults(&set.keys[k]);
         brk_slicefx_defaults(&set.slx[k]);
     }
-    kick_defaults(&set.kick);
-    for (k = 0; k < KICK_MEMS; k++) {    /* LOAF BREAKER: the kick memories begin as the built-in kicks (0.9.33: the eight in order, round; the
-                                          * first four again) */
-        kick_preset(kmem_at(k), kmem_pre(k));   /* (0.9.33, FLEXOR: KICK 7 TERROR, KICK 8 SPINE; 0.9.39 the eleven) */
-        (*kmem_at(k)).volume = set.kick.volume;
-    }
-    set.kslot = 3u;                      /* (ROTTERDAM's, set.kick's) */
     for (k = 0; k < 8u; k++)
-        set.keq[k] = 0.5f;               /* (LOAF BREAKER: the KICK EQ flat) */
-    {                                    /* (the snare and the hat where saves have them, the rest in pmore) */
-        perc_t d;
-        perc_defaults(&d);
-        set.perc.v[0] = d.v[0];
-        set.perc.v[1] = d.v[1];
-        set.perc.volume = d.volume;
-        set.pmore[0] = d.v[PV_CLAP];
-        for (k = 0; k < PERC_VOICES * PERC_MEMS; k++)   /* (the memories begin as the presets, again and again) */
-            perc_preset(perc_mem(k / PERC_MEMS, k % PERC_MEMS), k / PERC_MEMS, k % PERC_MEMS % PERC_PRESETS);
-    }
-    memset(set.smem, 0, sizeof set.smem);   /* (LOAF BREAKER: the drums' extras: none, as they always sounded) */
-    set.pxv = PX_OK;
+        set.keq[k] = 0.5f;               /* (the BASS's EQ flat; LOAF BREAKER's KICK EQ) */
     set.brkv = BRKV_TAG | 2u;            /* (LOAF BREAKER: the break's 32 steps on SEQ's grid) */
     for (k = 0; k < 16u; k++)            /* the overlays: full, the sweeps and the dirt a little less */
         set.ovl_amt[k] = k == OV_DIVE || k == OV_RISE || k == OV_CRUSH || k == OV_DIST || k == OV_BOOM ? 70u : 100u;
@@ -925,7 +754,7 @@ static void settings_defaults(void)
     set.drop_bars = 3u;                  /* (LOAF BREAKER: DROP: a 4-bar build, into the next pattern, the crash full) */
     set.drop_crash = 100u;
     set.drop_riser = 50u;
-    for (k = 0; k < BRK_KFX_SLOTS; k++) {   /* (KICK FX: empty) */
+    for (k = 0; k < BRK_KFX_SLOTS; k++) {   /* (the BASS's FX, LOAF BREAKER's KICK FX: empty) */
         brk_fx_slot_defaults(&set.kfx[k], FXT_EMPTY);
         set.kfx[k].on = 0u;
         brk_fxx_defaults(&set.kfxx[k], FXT_EMPTY);
@@ -972,24 +801,12 @@ static void fx_apply(void)
 }
 static uint8_t keq_flat;                 /* LOAF BREAKER (0.9.57, FLEXOR): SYSTEM › SETUP K2 KICK EQ OFF: every kick's EQ
                                           * left out (flat), the EQs themselves untouched; never saved: ON at every start */
-static void kick_apply(void)
+static void bl_sound_changed(void);      /* (bline.c) */
+static void kick_apply(void)             /* the BASS's EQ (LOAF BREAKER: the kick's EQ, the kick itself) */
 {
     static const float FLAT[8] = {0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f};
     brk_fx_set_kick_eq(keq_flat ? FLAT : set.keq);
-    kick_send();                         /* (LOAF BREAKER: the kick, its SYNTH, MORPH and CLEAN SUB) */
-    kick_set_bass((float)set.kbass[0] * (float)set.kbass[0] * 0.04f, (float)set.kbass[1] * 0.01f,
-                  (float)set.kbass[2] * 0.01f, (float)set.kbass[3] * 0.01f);   /* (TEST: its BASS) */
-}
-static void perc_apply(void)             /* all the drums' voices for the engine (LOAF BREAKER: the MELODY's too) */
-{
-    perc_t pa;
-    uint32_t k;
-    for (k = 0; k < PERC_VOICES; k++)
-        pa.v[k] = *perc_voice(k);
-    pa.volume = set.perc.volume;
-    perc_set(&pa);
-    for (k = 0; k < 3u; k++)             /* (LOAF BREAKER: their extras) */
-        perc_set_x(k, perc_x(k));
+    bl_sound_changed();                  /* (its fader, its switches) */
 }
 static void settings_apply(void)
 {
@@ -1007,7 +824,6 @@ static void settings_apply(void)
     brk_gate((float)(set.gate ? set.gate : 100u) * 0.01f);
     brk_snap(SNAP_SL[snap_index()]);
     kick_apply();
-    perc_apply();
     skin_apply(set.skin & 0x7Fu);
     {
         uint32_t k;
@@ -1093,7 +909,8 @@ typedef struct {
 #define FXM_N (4u + BRK_FXX)             /* an effect's P1-P3, MIX, then its extras (MORE, MOD) */
 typedef struct {
     uint16_t fx[BRK_NFXT][FXM_N];
-    uint16_t kfx[KICK_LAYERS][KICK_FX - 1u][3];   /* a kick layer's effect (KFX_DRIVE..): its two settings, its mix */
+    uint16_t kfx_was[4][4][3];           /* (LOAF BREAKER: each kick layer's effect as left; gone with the kick, its
+                                          * bytes kept for the layout) */
     uint16_t fx_ok;                      /* bit t: fx[t] holds them (none: the effect's starting settings) */
     uint16_t kfx_ok;                     /* bit layer * 4 + effect - 1 */
 } fxmem_t;
@@ -1178,50 +995,7 @@ static void drops_init(void)             /* every drop as the drop set, DROP 1 s
 }
 static uint32_t drop_sel(void) { return steps.dsel % NDROPS; }
 
-/* LOAF BREAKER (0.9.2, FLEXOR): KICK 11..20, as KICK 1..10 are kept elsewhere: the kick, its SYNTH, its knobs (kx, kxh)
- * and its KICK LAB; their own store object (OBJ_KMEM2, the hoover notes' old room), saved with the rest. An older save
- * has none: they begin as the built-in kicks (settings_defaults' order), the knobs as the ones playing, no LAB */
-#define KM2_MAGIC 0x324D4B4Bu            /* "KKM2" */
-typedef struct {
-    uint32_t magic;
-    kick_t kmem[KICK_MEMS - KMEM_A];
-    int8_t ksmem[KICK_MEMS - KMEM_A][KS_N];
-    uint8_t kx[KICK_MEMS - KMEM_A][KX_N];
-    uint8_t kxh[KICK_MEMS - KMEM_A];
-    kick_lab_t lab[KICK_MEMS - KMEM_A];
-} km2_t;
-_Static_assert(sizeof(km2_t) <= 3840u, "a store object holds 3840 bytes");
-static km2_t km2 PLAT_POOL;
 #include "bline.c"                    /* the BASS LINES: SEQ, EDIT (their object: KICK 11..20's) */
-static kick_t *kmem_at(uint32_t n)
-{
-    n %= KICK_MEMS;
-    return n < KMEM_A ? &set.kmem[n] : &km2.kmem[n - KMEM_A];
-}
-static int8_t *ksmem_at(uint32_t n)
-{
-    n %= KICK_MEMS;
-    return n < KMEM_A ? set.ksmem[n] : km2.ksmem[n - KMEM_A];
-}
-static uint8_t *kx_at(uint32_t n)
-{
-    n %= KICK_MEMS;
-    return n < KMEM_A ? steps.kx[n] : km2.kx[n - KMEM_A];
-}
-static uint8_t *kxh_at(uint32_t n)
-{
-    n %= KICK_MEMS;
-    return n < KMEM_A ? &steps.kxh[n] : &km2.kxh[n - KMEM_A];
-}
-static kick_lab_t *klmem_at(uint32_t n)
-{
-    n %= KICK_MEMS;
-    return n < KMEM_A ? &klab.mem[n] : &km2.lab[n - KMEM_A];
-}
-static void km2_lab_clear(void)
-{
-    memset(km2.lab, 0, sizeof km2.lab);
-}
 
 /* LOAF BREAKER: 64 patterns, four groups of 16 (P1-16, P17-32, P33-48, P49-64). The group in RAM is pats.p, pats.kn,
  * pats.hits and steps.b (set.pattern its slot, set.pgrp the group); each group has its own three store objects
@@ -1266,22 +1040,17 @@ static int grp_save(void)                /* the group in RAM to its objects: 1 d
     int ok;
     if (wiped)
         return 0;
-    ok = plat_store_save(OBJ_PG0 + g, pats.p, sizeof pats.p) == 0 &&
-             plat_store_save(OBJ_KG0 + g, pats.kn, KH_SIZE) == 0 &&
-             plat_store_save(OBJ_SG0 + g, steps.b, sizeof steps.b) == 0 &&   /* (LOAF BREAKER, 0.209: OBJ_NG0 + g, the
-                                          * MELODY's notes, no more) */
-             plat_store_save(OBJ_DX, &dx, sizeof dx) == 0;   /* (0.9.30: the drums' bars 3 and 4, every group's) */
+    ok = plat_store_save(OBJ_PG0 + g, pats.p, sizeof pats.p) == 0;   /* (the BASS's layout: the patterns alone, the
+                                          * kick's notes, the drum steps and their bars 3-4 gone with them) */
     if (ok) {
         grp_sum = grp_hash();
         grp_new = 0u;
-        dx_old = 0u;                     /* (OBJ_DX written: lengths of 64 kept from now on) */
     }
     return ok;
 }
 static int grp_has(uint32_t g)           /* the group's own objects there, whole */
 {
-    return plat_store_size(OBJ_PG0 + g) == (int)sizeof pats.p && plat_store_size(OBJ_KG0 + g) == (int)KH_SIZE &&
-           plat_store_size(OBJ_SG0 + g) == (int)sizeof steps.b;
+    return plat_store_size(OBJ_PG0 + g) == (int)sizeof pats.p;
 }
 static void grp_blank(void)              /* the group in RAM: 16 empty patterns (pat_defaults' own) */
 {
@@ -1301,161 +1070,13 @@ static void grp_blank(void)              /* the group in RAM: 16 empty patterns 
 static void grp_load(uint32_t g)         /* group g into RAM (none saved yet: empty) */
 {
     g %= NGRP;
-    if (!grp_has(g) || plat_store_load(OBJ_PG0 + g, pats.p, sizeof pats.p) != (int)sizeof pats.p ||
-        plat_store_load(OBJ_KG0 + g, pats.kn, KH_SIZE) != (int)KH_SIZE ||
-        plat_store_load(OBJ_SG0 + g, steps.b, sizeof steps.b) != (int)sizeof steps.b) {
+    if (!grp_has(g) || plat_store_load(OBJ_PG0 + g, pats.p, sizeof pats.p) != (int)sizeof pats.p)
         grp_blank();
-        memset(dx.b[g], 0, sizeof dx.b[g]);
-    }
+    memset(pats.kn, 0, KH_SIZE);         /* (the kick's notes, the drum steps: gone with them, kept empty) */
+    memset(steps.b, 0, sizeof steps.b);
     set.pgrp = (uint8_t)g;
-    dx_lens();
     grp_sum = grp_hash();
     grp_new = 0u;
-}
-/* LOAF BREAKER (0.9.26, FLEXOR): each kick's own FX section (EQ B, EQ S, FX1, FX2: set.keq, set.kfx, kfxx, kmbc),
- * KICK 1..20, kept here packed (every setting 0..1 as 16 bits) while another kick plays; set.* hold the kick playing's.
- * Its own store object (OBJ_KFXM); a save from before it: every kick with the FX section the kicks shared then */
-#define KFXM_MAGIC 0x4D58464Bu           /* "KFXM" */
-#define KFX_NF 31u                       /* (a slot's settings: p[3], mix, x[8], an MB COMP's 19) */
-typedef struct {
-    uint8_t b[4];                        /* type, on, the extras' type, the MB COMP's solo */
-    uint16_t v[KFX_NF];
-} kfxp_t;
-typedef struct {
-    uint32_t magic;
-    struct {
-        kfxp_t s[BRK_KFX_SLOTS];
-        uint16_t eq[8];
-    } k[KICK_MEMS];
-} kfxm_t;
-_Static_assert(sizeof(kfxm_t) <= 3840u, "a store object holds 3840 bytes");
-static kfxm_t kfxm PLAT_POOL;            /* (0.9.71: in the pool, for the RAM) */
-static float *kfx_f(uint32_t j, uint32_t i)   /* the kick FX slot j's setting i (KFX_NF of them) */
-{
-    brk_fxslot_t *s = &set.kfx[j % BRK_KFX_SLOTS];
-    brk_fxx_t *x = &set.kfxx[j % BRK_KFX_SLOTS];
-    brk_mbc_t *m = &set.kmbc[j % BRK_KFX_SLOTS];
-    if (i < 3u)
-        return &s->p[i];
-    if (i == 3u)
-        return &s->mix;
-    if (i < 12u)
-        return &x->x[i - 4u];
-    i -= 12u;
-    if (i < 15u) {
-        float *b[5] = {m->thr, m->ratio, m->att, m->rel, m->gain};
-        return &b[i / 3u][i % 3u];
-    }
-    return i == 15u ? &m->xlo : i == 16u ? &m->xhi : i == 17u ? &m->knee : &m->out;
-}
-static uint16_t kfx_q(float v) { return (uint16_t)(brk_clampf(v, 0.0f, 1.0f) * 65535.0f + 0.5f); }
-static void kfx_put(uint32_t n)          /* the kick playing's FX section into kick n's place */
-{
-    uint32_t j, i;
-    n %= KICK_MEMS;
-    for (j = 0; j < BRK_KFX_SLOTS; j++) {
-        kfxp_t *p = &kfxm.k[n].s[j];
-        p->b[0] = set.kfx[j].type;
-        p->b[1] = set.kfx[j].on;
-        p->b[2] = set.kfxx[j].type;
-        p->b[3] = set.kmbc[j].solo;
-        for (i = 0; i < KFX_NF; i++)
-            p->v[i] = kfx_q(*kfx_f(j, i));
-    }
-    for (i = 0; i < 8u; i++)
-        kfxm.k[n].eq[i] = kfx_q(set.keq[i]);
-}
-static void kfx_get(uint32_t n)          /* kick n's FX section, the one playing's now */
-{
-    uint32_t j, i;
-    n %= KICK_MEMS;
-    for (j = 0; j < BRK_KFX_SLOTS; j++) {
-        const kfxp_t *p = &kfxm.k[n].s[j];
-        set.kfx[j].type = p->b[0] < BRK_NFXT ? p->b[0] : FXT_EMPTY;
-        set.kfx[j].on = p->b[1];
-        set.kfxx[j].type = p->b[2];
-        set.kmbc[j].solo = p->b[3];
-        for (i = 0; i < KFX_NF; i++)
-            *kfx_f(j, i) = (float)p->v[i] * (1.0f / 65535.0f);
-    }
-    for (i = 0; i < 8u; i++)
-        set.keq[i] = (float)kfxm.k[n].eq[i] * (1.0f / 65535.0f);
-}
-static void kfx_all(void)                /* every kick with the FX section playing (an older save, a reset) */
-{
-    uint32_t k;
-    kfxm.magic = KFXM_MAGIC;
-    for (k = 0; k < KICK_MEMS; k++)
-        kfx_put(k);
-}
-/* LOAF BREAKER (0.9.32, FLEXOR): TERROR's and SPINE's part outside kick_t: their SYNTH (DROP +20, TIME 167 ms, SHAPE
- * -50: a pure sine), TAIL + DRIVE 100 and the KICK EQ's gains (LOW +6.2 dB until 0.9.46, +5 dB since); ui/kick.c kpre_extra
- * on the kick playing, kmem_extra on a kick memory as it begins */
-/* LOAF BREAKER: a built-in kick's part outside kick_t (0.9.32 TERROR and SPINE; 0.9.39 every preset but ROTTERDAM and
- * DISTORTO, FLEXOR): its SYNTH (KS_*), its LAB (TAIL MODE, NOTE, CURVE, TAIL FILTER, its time, TAIL + DRIVE) and its
- * KICK EQ (LOW, MID, HIGH: 0.5 + dB / 24; 0.9.47, FLEXOR: flat but TERROR's and SPINE's LOW +5 dB, and never a band
- * above +5 dB, KT_EQ_MAX); 0: none, the SYNTH and the LAB cleared, the EQ as it was */
-typedef struct {
-    uint8_t on;
-    int8_t syn[KS_N];
-    uint8_t mode, note, curve, filt, ftime, drive;
-    float eq[3];
-} kt_x_t;
-#define KT_DB(d) (0.5f + (d) / 24.0f)
-#define KT_EQ_MAX KT_DB(5.0f)            /* (0.9.47, FLEXOR: no built-in kick's EQ band above +5 dB, now or later) */
-static const kt_x_t KT_X[KICK_PRESETS] = {
-    {1, {10, 0, -50, 0, 0, 0, 0, 0}, 1, 0, 0, 0, 0, 0, {0.5f, 0.5f, 0.5f}},           /* 909 */
-    {1, {0, 0, -30, 0, 25, 10, 0, 0}, 1, 0, 0, 0, 0, 0, {0.5f, 0.5f, 0.5f}},          /* TECHNO */
-    {1, {15, 0, 0, 0, 0, 0, 30, 0}, 1, 0, 0, 20, 60, 0, {0.5f, 0.5f, 0.5f}},   /* EARLY HC */
-    {0, {0}, 0, 0, 0, 0, 0, 0, {0.5f, 0.5f, 0.5f}},                                          /* ROTTERDAM */
-    {1, {0}, 1, 0, 0, 35, 60, 0, {0.5f, 0.5f, 0.5f}},                         /* INDUSTRIAL */
-    {0, {0}, 0, 0, 0, 0, 0, 0, {0.5f, 0.5f, 0.5f}},                                          /* DISTORTO */
-    {1, {20, 12, -50, 0, 0, 0, 0, 0}, 1, 0, 0, 0, 0, 100, {KT_DB(5.0f), 0.5f, 0.5f}},              /* TERROR (TIME 12:
-                                          * 120 ms x 2^0.48, 167 ms) */
-    {1, {20, 12, -50, 0, 0, 0, 0, 0}, 0, 0, 0, 0, 0, 100, {KT_DB(5.0f), 0.5f, 0.5f}},              /* SPINE (CLASSIC) */
-    {1, {10, 0, -40, 0, 0, 0, 0, 0}, 1, 0, 0, 20, 60, 40, {0.5f, 0.5f, 0.5f}},   /* 909 DRIVE */
-    {1, {0}, 1, 0, 0, 15, 60, 70, {0.5f, 0.5f, 0.5f}},                        /* GABBER */
-    {1, {15, 10, -40, 0, 0, 0, 0, 0}, 1, 8, 0, 15, 60, 85, {0.5f, 0.5f, 0.5f}},   /* MILLENNIUM */
-    {1, {0, 0, 0, 0, 20, 0, 0, 0}, 1, 0, 0, 45, 55, 0, {0.5f, 0.5f, 0.5f}},   /* DOOMCORE */
-};
-static int kt_extra(uint32_t p, int8_t *syn, kick_lab_t *lab, float *eq)   /* (after the SYNTH and the LAB cleared;
-                                          * 1: it has its own, the EQ set) */
-{
-    const kt_x_t *x = &KT_X[p % KICK_PRESETS];
-    uint32_t j;
-    if (!x->on)
-        return 0;
-    for (j = 0; j < KS_N; j++)
-        syn[j] = x->syn[j];
-    lab->mode = x->mode;
-    lab->note = x->note;
-    lab->curve = x->curve;
-    lab->filt = x->filt;
-    lab->ftime = x->ftime;
-    lab->drive = x->drive;
-    for (j = 0; j < 3u; j++)
-        eq[j] = x->eq[j] > KT_EQ_MAX ? KT_EQ_MAX : x->eq[j];   /* (never above +5 dB) */
-    return 1;
-}
-static void kmem_extra(uint32_t k)       /* (0.9.33, FLEXOR: kick memory k as it begins, its built-in (kmem_pre: KICK 7
-                                          * TERROR, KICK 8 SPINE): its PRESET stored, its rest (kt_extra); after
-                                          * the LAB cleared and the FX sections set) */
-{
-    uint32_t p = kmem_pre(k), i;
-    float e[3];
-    klmem_at(k)->pre = (uint8_t)(p + 1u);
-    if (kt_extra(p, ksmem_at(k), klmem_at(k), e))
-        for (i = 0; i < 3u; i++)
-            kfxm.k[k % KICK_MEMS].eq[i] = kfx_q(e[i]);
-}
-static void kmem_extras(void)            /* (every memory: a new FM-1, RESET ALL, RESET's ALL KICKS) */
-{
-    uint32_t k;
-    for (k = 0; k < KICK_MEMS; k++)
-        kmem_extra(k);
-    klab.cur = *klmem_at(set.kslot % KICK_MEMS);   /* (the kick playing's LAB: its memory's) */
-    for (k = 0; k < KS_N; k++)
-        set.ksyn[k] = ksmem_at(set.kslot % KICK_MEMS)[k];
 }
 static uint8_t bu_held;                  /* (a backup streaming over USB: no saving meanwhile, backup.c) */
 static int store_all(void)               /* SAVE: the settings, the patterns (the group in RAM too), the steps: 1 done */
@@ -1465,11 +1086,8 @@ static int store_all(void)               /* SAVE: the settings, the patterns (th
     dm_put(steps.dm[drop_sel()]);        /* (0.9.58: the drop selected, as set, into its memory) */
     return plat_store_save(OBJ_SETTINGS, &set, sizeof set) == 0 && plat_store_save(OBJ_PAT, &pats, sizeof pats) == 0 &&
            plat_store_save(OBJ_STEP, &steps, sizeof steps) == 0 && grp_save() &&
-           plat_store_save(OBJ_KLAB, &klab, sizeof klab) == 0 &&
-           bl_save() &&                  /* (the BASS LINES, in KICK 11..20's object: bline.c) */
-           (kfx_put(set.kslot), plat_store_save(OBJ_KFXM, &kfxm, sizeof kfxm) == 0) &&   /* (each kick's FX, 0.9.26) */
-           (wk_store(), kx2_save() == 0);   /* (each kick's TOK and TAIL GATE, 0.9.45; each
-                                          * break's white keys, 0.9.71) */
+           bl_save() &&                  /* (the BASS LINES: bline.c) */
+           (wk_store(), kx2_save() == 0);   /* (each break's white keys, split and CHAOS, 0.9.71) */
 }
 /* LOAF BREAKER (24 Nov 2026): fm1-base's backup and restore (app.h APP_BACKUP_*; the VST sends and fetches through it) */
 uint8_t lb_bu_buf[3840] __attribute__((aligned(4)));   /* (a restore's scratch: RAM, the pool has no room) */
@@ -1478,67 +1096,11 @@ int app_backup_playing(void) { return playing_now(); }
 void app_backup_flush(void) { store_all(); }   /* (stopped: everything as it is now, saved first) */
 void app_backup_hold(int on) { bu_held = (uint8_t)(on != 0); }
 void app_backup_restored(void) { plat_restart(); }   /* (everything read again, as at power-on) */
-/* LOAF BREAKER: the kick memory k's knobs from the ones playing (kx_put), the ones playing from k's (kx_get); kx_all:
- * every memory's as the ones playing (an older save, RESET ALL) */
-static void kx_put(uint32_t k)
+static void steps_defaults(void)          /* (the track items' breaks and bass lines: none) */
 {
-    uint8_t *x = kx_at(k % KICK_MEMS);
-    x[0] = set.selk_asg;
-    x[1] = set.selk_asg2;
-    x[2] = set.csub;
-    memcpy(x + 3, set.kbass, 4);
-    x[7] = set.kmorph;
-    x[8] = set.kmorph_to;
-    (*kxh_at(k % KICK_MEMS)) = set.selk_hi;
-}
-static void kx_get(uint32_t k)
-{
-    const uint8_t *x = kx_at(k % KICK_MEMS);
-    set.selk_asg = x[0];
-    set.selk_asg2 = x[1];
-    set.csub = x[2];
-    memcpy(set.kbass, x + 3, 4);
-    set.kmorph = x[7];
-    set.kmorph_to = x[8];
-    set.selk_hi = (*kxh_at(k % KICK_MEMS));
-}
-static void kx_all(void)
-{
-    uint32_t k;
-    for (k = 0; k < KICK_MEMS; k++)
-        kx_put(k);
-}
-static void km2_defaults(void)           /* (KICK 11..20 as they begin: a save from before them, 0.9.2) */
-{
-    uint32_t k;
-    km2.magic = KM2_MAGIC;
-    for (k = KMEM_A; k < KICK_MEMS; k++) {
-        kick_preset(kmem_at(k), kmem_pre(k));
-        kmem_at(k)->volume = set.kick.volume;
-        memset(ksmem_at(k), 0, KS_N);
-        kx_put(k);
-    }
-    km2_lab_clear();
-    for (k = KMEM_A; k < KICK_MEMS; k++)   /* (their PRESET, TERROR's and SPINE's rest: KICK 15, 16) */
-        kmem_extra(k);
-}
-static uint8_t *stepb(uint32_t pi, uint32_t d, uint32_t s)   /* pattern pi, drum d (DR_*), its step s */
-{
-    d %= NDRUMS;
-    return &steps.b[pi % NPAT][d == DR_KICK ? (s & 63u) : 64u + (d - 1u) * 32u + (s & 31u)];
-}
-static void steps_defaults(void)          /* (none: from the patterns' HITS) */
-{
-    uint32_t pi, d, s;
     steps.magic = STEPS_MAGIC;
     memset(steps.tk, 0, sizeof steps.tk);
     memset(steps.tb, 0, sizeof steps.tb);
-    for (pi = 0; pi < NPAT; pi++)
-        for (d = 0; d < NDRUMS; d++)
-            for (s = 0; s < (d == DR_KICK ? 64u : 32u); s++) {
-                uint32_t h = pats.hits[pi][d];
-                *stepb(pi, d, s) = (uint8_t)(h >= 2u && h <= 4u ? h - 1u : 0u);
-            }
 }
 _Static_assert(sizeof pats <= 3840u, "a store object holds 3840 bytes");
 /* LOAF BREAKER: BUILD and DROP. SEL clicked three times, playing (build_n, the main loop): from the next bar the
@@ -1586,43 +1148,7 @@ static inline float lim_soft(float x)    /* over 0.95: rounded off, never reachi
 }         /* LOAF BREAKER TEST: ARP held: FILL (the steps' FILL / NOT FILL, the snare's
                                           * roll on the bar's last beat) */
 static volatile uint32_t kick_hit_n;     /* (the kick's hits so far: the simulator's checks) */
-/* LOAF BREAKER: the drums' HITS (pats.hits): a hit's repeats still to come, samples from this block's start */
-#define HQ_N 16u
-static struct { int32_t at; uint8_t kick, who; float pm; } hq[HQ_N];
-static uint32_t hq_n;
-static void hq_push(int32_t at, uint8_t kick, uint8_t who, float pm);
-/* a drum's hit on step si of pattern pi, at off (len: a 16th): its step's CHANCE (0: skipped), its NUDGE (later) and
- * its HITS (the repeats in its step) queued; 1: it sounds at off itself */
-static uint32_t step_rng = 0x9E3779B9u;
-static uint32_t pat_cycle;               /* LOAF BREAKER TEST: the pattern's loops (its first step), for 1:2 and 2:2 */
-static int step_hit(uint32_t pi, uint32_t d, uint32_t si, int32_t off, int32_t len, uint8_t kick, uint8_t who, float pm)
-{
-    uint32_t b = *stepb(pi, d, si), hn = (b & 3u) + 1u, ch = (b >> 2) & 7u, nd = b >> 5, j;
-    int32_t at;
-    if (ch >= 1u && ch <= 3u) {          /* LOAF BREAKER TEST: CHANCE 75 %, 50 %, 25 % */
-        step_rng = step_rng * 1664525u + 1013904223u;
-        if ((step_rng >> 30) < ch)
-            return 0;
-    } else if ((ch == 4u && (pat_cycle & 1u)) || (ch == 5u && !(pat_cycle & 1u)))   /* (1:2 the first loop of two,
-                                          * 2:2 the second; FILL, NOT FILL: always, FILL gone in 0.244) */
-        return 0;
-    at = off + (int32_t)nd * len / 16;
-    if (nd)
-        hq_push(at, kick, who, pm);
-    for (j = 1; j < hn; j++)
-        hq_push(at + len * (int32_t)j / (int32_t)hn, kick, who, pm);
-    return !nd;
-}
-static void hq_push(int32_t at, uint8_t kick, uint8_t who, float pm)
-{
-    if (hq_n < HQ_N) {
-        hq[hq_n].at = at;
-        hq[hq_n].kick = kick;
-        hq[hq_n].who = who;
-        hq[hq_n].pm = pm;
-        hq_n++;
-    }
-}
+static uint32_t pat_cycle;               /* LOAF BREAKER TEST: the pattern's loops (its first step) */
 static volatile uint8_t build_n;         /* three clicks: a build, or (building) the drop */
 static volatile uint16_t drum_next[NDRUMS][4];   /* the next pattern's drums, for the drop */
 static volatile uint8_t drop_to = 0xFFu; /* the pattern the drop brings in (its break's steps, at the bar before) */
@@ -1994,7 +1520,8 @@ static const bank_slot_t *bank_check(const uint8_t *bank, uint32_t size, uint32_
 #define CU_NZ 2u
 #define CU_OLD 0x97000u
 static const uint32_t CU_ZB[CU_NZ] = {0x93000u, 0xE5000u};   /* each zone's start */
-static const uint32_t CU_ZS[CU_NZ] = {35u, 23u};               /* and its sectors */
+static const uint32_t CU_ZS[CU_NZ] = {57u, 23u};               /* and its sectors (the BASS's layout: zone 0 to 0xCBFFF,
+                                          * 228 KB; LOAF BREAKER's 35, to the KICK LAB's object) */
 #define CU_CAP(z) (CU_ZS[z] * 4096u)
 static uint32_t n_user, n_bank;          /* the player's breaks (each zone checked whole: cu_scan); the bank's */
 static uint32_t n_uz[CU_NZ], cu_at[CU_NZ], cu_cap[CU_NZ];   /* each zone's breaks, where its bank is read, its room */
@@ -2046,52 +1573,6 @@ static int cu_at_ok(uint32_t at, uint32_t n)
             return 0;
     }
     return 1;
-}
-/* LOAF BREAKER (0.9.45, FLEXOR: the site's IMPORT page): the player's drum samples, a kit of three (the snare, the hat,
- * the clap), IMA ADPCM, in the two sectors of OBJ_BLE (0xDE000, 8 KB: no Bluetooth in LOAF BREAKER, nothing else
- * writes there), written whole over USB SysEx (zone 2, ui/main.c kit_sysex) and read where they lie as they play
- * (perc_set_sample). A 16-byte header {KIT_MAGIC, the crc32 of what follows it, its size, 0}, then for each drum
- * {offset from the kit's start, its samples, its rate, its name (12)}, 24 bytes, then the data. WIPE MEMORY erases it
- * (the store map's), RESET ALL leaves it */
-#define KIT_AT 0xDE000u
-#define KIT_CAP 8192u
-#define KIT_MAGIC 0x314B5244u               /* "DRK1" */
-#define KIT_HEAD (16u + 3u * 24u)
-typedef struct {
-    uint32_t off, len, rate;
-    char name[12];
-} kit_ent_t;
-static uint8_t kit_has;                  /* (bit v: drum v has its sample) */
-static const kit_ent_t *kit_ent(uint32_t v)   /* (drum v's, or 0) */
-{
-    const uint8_t *p = plat_data(KIT_AT);
-    return p && kit_has >> (v % 3u) & 1u ? (const kit_ent_t *)(const void *)(p + 16u + (v % 3u) * 24u) : 0;
-}
-static void kit_scan(void)
-{
-    const uint8_t *p = plat_data(KIT_AT);
-    const uint32_t *h = (const uint32_t *)(const void *)p;
-    uint32_t v;
-    kit_has = 0u;
-    if (p && h[0] == KIT_MAGIC && h[2] >= KIT_HEAD - 16u && h[2] <= KIT_CAP - 16u && crc32_of(p + 16, h[2]) == h[1])
-        for (v = 0; v < 3u; v++) {
-            const kit_ent_t *e = (const kit_ent_t *)(const void *)(p + 16u + v * 24u);
-            if (e->len && e->off >= KIT_HEAD && e->rate >= 8000u && e->rate <= 48000u && e->len <= 2u * KIT_CAP &&
-                e->off + (e->len + 1u) / 2u <= 16u + h[2])
-                kit_has |= (uint8_t)(1u << v);
-        }
-    for (v = 0; v < 3u; v++) {
-        const kit_ent_t *e = kit_ent(v);
-        perc_set_sample(v, e ? p + e->off : 0, e ? e->len : 0u, e ? e->rate : 0u);
-    }
-}
-static void kit_name(uint32_t v, char *t)  /* (drum v's sample, its name; "" none) */
-{
-    const kit_ent_t *e = kit_ent(v);
-    uint32_t k;
-    for (k = 0; k < 12u; k++)
-        t[k] = e && e->name[k] >= ' ' && e->name[k] <= 'z' ? e->name[k] : 0;
-    t[12] = 0;
 }
 /* break i's slot and its bank: the bank built into the image (or a synthesised Amen), then the player's */
 static const bank_slot_t *slot_of(uint32_t i, const uint8_t **bank)
@@ -2291,21 +1772,15 @@ static const brk_break_t *break_load(uint32_t i)
     return b;
 }
 
-static int16_t rum_line[4096] PLAT_POOL;   /* LOAF BREAKER: the kick's RUMBLE, its line (93 ms) */
 void app_init(void)
 {
-    int fresh = 0;                       /* (0.9.33: no settings saved: a new FM-1) */
-    keq_flat = 0u;                       /* (0.9.57: the KICK EQ on at every start, FLEXOR) */
-    kick_rumble_buf(rum_line, 4096u);
+    keq_flat = 0u;                       /* (0.9.57: the BASS's EQ on at every start, FLEXOR's KICK EQ) */
     brk_init();
     brk_fx_init();
     brk_fx_delay_buffer(dub_line, CH_DUB_LEN);
-    kick_init();
     bass_init();
-    perc_init();
     ovl_init(ovl_line);
     breaks_count();                      /* the bank's (breaks/breaks.txt), then the player's own (0.9.32) */
-    kit_scan();                          /* (0.9.45: the player's drum samples) */
     settings_defaults();                 /* (what a shorter, older save doesn't reach keeps these) */
     {
         int sz = plat_store_size(OBJ_SETTINGS);
@@ -2318,11 +1793,6 @@ void app_init(void)
         if (set.magic == SET_MAGIC && !(set.skin & 0x80u))   /* (LOAF BREAKER, 0.237: a save from before the 1.0's
                                           * skins: its place in the 18 before, the nearest kept) */
             set.skin = (uint8_t)(0x80u | skin_old(set.skin));
-        if (set.pxv != PX_OK) {          /* (LOAF BREAKER: a save from before the drums' extras: smem the MELODY's
-                                          * leftovers, cleared) */
-            memset(set.smem, 0, sizeof set.smem);
-            set.pxv = PX_OK;
-        }
         if (set.bkeys.bk[0] != BK_TAG || set.bkeys.bk[1] >= BKP_N)
             bk_defaults();               /* (LOAF BREAKER: a save from before the BLACK KEYS: the STAB's leftovers) */
                          /* (LOAF BREAKER: a save from before the TUTORIAL: an FM-1 in use, none started;
@@ -2331,7 +1801,6 @@ void app_init(void)
     if (set.magic != SET_MAGIC || set.tempo_x10 < 400u || set.tempo_x10 > 3000u || set.swing < 50u ||
         set.swing > 75u) {
         settings_defaults();
-        fresh = 1;                       /* (0.9.33: a new FM-1: its kick memories' rest, below) */
         if (n_bank)
             set.brk = (uint8_t)n_synth;  /* the bank's first break */
     }
@@ -2351,8 +1820,6 @@ void app_init(void)
     }
     if (pats.magic != PAT_MAGIC && pats.magic != PAT2_MAGIC && pats.magic != PAT1_MAGIC)
         pat_defaults();
-    if (plat_store_load(OBJ_KLAB, &klab, sizeof klab) != (int)sizeof klab || klab.magic != KLAB_MAGIC)
-        klab_defaults();
     {                                    /* (0.9.45: a save before TOK and the TAIL GATE: none on any kick; 0.9.49: a
                                           * shorter one, before the SEL layer: none) */
         int sz = kx2_size();
@@ -2388,24 +1855,8 @@ void app_init(void)
                 sp_put(set.brk, was);
         }
         wk_brk = (wkrow_t)wk_idx();
-    }                 /* (LOAF BREAKER: a save before the KICK LAB: every kick as it sounded) */
-    {                                    /* (LOAF BREAKER, 0.9.2: KICK 11..20; a save before them: as they begin; the
-                                          * KICK LAB's line above may have cleared their LAB: theirs read after) */
-        km2_lab_clear();
-        km2_defaults();                  /* (KICK 11..20: their object is the BASS LINES' now, bline.c) */
-        bl_load();
-        if (plat_store_load(OBJ_KFXM, &kfxm, sizeof kfxm) != (int)sizeof kfxm || kfxm.magic != KFXM_MAGIC)
-            kfx_all();                   /* (0.9.26: each kick's FX section; before, the one they shared) */
-        if (fresh)
-            kmem_extras();               /* (0.9.33: KICK 1-20 as they begin, TERROR's and SPINE's whole) */
-        dx_old = 0u;
-        if (plat_store_load(OBJ_DX, &dx, sizeof dx) != (int)sizeof dx || dx.magic != DX_MAGIC) {
-            memset(&dx, 0, sizeof dx);   /* (0.9.30: the drums' bars 3 and 4; a save before them: none) */
-            dx.magic = DX_MAGIC;
-            dx_old = 1u;
-            dx_lens();
-        }
     }
+    bl_load();                           /* (the BASS LINES, bline.c) */
     int ssz = plat_store_load(OBJ_STEP, &steps, sizeof steps), sok;
     sok = (ssz == (int)sizeof steps || ssz == (int)STEPS_SIZE_KPRE || ssz == (int)STEPS_SIZE_KXH || ssz == (int)STEPS_SIZE_TK || ssz == (int)STEPS_SIZE_KX ||
            ssz == (int)STEPS_SIZE_TB ||
@@ -2414,8 +1865,6 @@ void app_init(void)
         steps_defaults();                /* (LOAF BREAKER: the drum steps' own settings) */
     else if (ssz == (int)STEPS_SIZE_OLD)
         memset(steps.tb, 0, sizeof steps.tb);   /* (a save before the tracks' breaks) */
-    if (!sok || ssz < (int)STEPS_SIZE_KX)
-        kx_all();                        /* (a save before the kicks' own knobs: every kick with the ones it had) */
     if (!sok || ssz < (int)STEPS_SIZE_TK)
         memset(steps.tk, 0, sizeof steps.tk);   /* (a save before the items' kicks: the one playing) */
     if (!sok || ssz < (int)STEPS_SIZE_KXH)
@@ -2455,7 +1904,7 @@ void app_init(void)
 #define PKT_RT(b) (0x0Fu | (uint32_t)(b) << 8)   /* a real-time byte as a USB-MIDI packet (CIN 0xF) */
 #define MIDI_SLICE0 48u                  /* C3: slice 1 */
 static void midi_slice(int s, int on);   /* (with the UI: they play as the keys, and REC records them) */
-static void midi_drum(uint32_t lane);
+static void midi_bass(uint32_t note, int on);   /* (seq.c) */
 #define MS_PER_SAMPLE (1000.0f / (float)BRK_SR)
 #define CLKQ 64u
 /* (times in plat_ms: the 1 kHz tick sends at that grain anyway, a beat of ticks averages the tempo, and the host
@@ -2545,9 +1994,9 @@ void app_loop(void)
                     mid_held = (uint16_t)(mid_held & ~b);
                     midi_slice((int)(note - MIDI_SLICE0), 0);
                 }
-            } else if (on && ni != NI_OFF && (note == 36u || note == 38u || note == 39u || note == 42u || note == 44u || note == 46u))
-                midi_drum(note == 36u ? DR_KICK : note == 38u ? DR_SNARE : note == 39u ? DR_CLAP : DR_HAT);   /* (LOAF
-                                          * BREAKER: 39 the clap) */
+            } else if (note < MIDI_SLICE0 && ni != NI_OFF)   /* (below the slices: the BASS, played as its keys; LOAF
+                                          * BREAKER: 36 the kick, 38 the snare ...) */
+                midi_bass(note, (int)on);
             continue;
         }
         if (!set.clk_in)
@@ -2627,15 +2076,12 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     static float kick[APP_BLOCK] PLAT_POOL, perc[APP_BLOCK] PLAT_POOL;
     static float kl[APP_BLOCK] PLAT_POOL, kr[APP_BLOCK] PLAT_POOL;   /* LOAF BREAKER: the kick through the overlays
                                           * alone (THRU KICK) */
-    static float spd[APP_BLOCK] PLAT_POOL, tape0 = 1.0f;   /* LOAF BREAKER: the VINYL BREAK's speed on the drums */
-    static float x2_pm = 1.0f;           /* (0.9.48: X2's kicks, the last kick's note) */
     static uint8_t b_on, b_drop, b_rew;  /* LOAF BREAKER: building; the drop asked; the drop armed for the next
                                           * step (the engine rewound to the pattern's first: brk_rewind) */
     static uint32_t b_steps;             /* steps built */
     static int32_t half_due = -1;        /* the roll's 32nd between two steps: samples from this block's start */
     static float crash;                  /* the drop's crash, its level */
     static uint8_t gap_now;              /* LOAF BREAKER: the GAP before the drop: silent now */
-    int vin = (set.vinyl & 3u) != 1u;    /* (THRU BOTH or KICK: the drums slow too) */
     uint32_t mb = arp_mask(1u), mk = arp_mask(2u);   /* (0.9.50, FLEXOR: each ARP effect its own THRU: the
                                           * break's, the kick's, the rest on the whole mix) */
     int kick_dry = (mb | mk) != 0u;      /* the kick apart from the chain (as the ARP's THRU BREAK or KICK was) */
@@ -2731,8 +2177,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
         done += m;
         {                                /* the drums: on the steps of the bar their lanes have, at their samples */
             uint16_t off[8], ka[8], pa[8];
-            float kpm[8];                /* (crossbreed: each kick's note, a factor) */
-            uint8_t idx[8], who[8];
+            uint8_t idx[8];
             uint32_t k, ne = brk_step_events(off, idx, 8u), nk = 0u, np = 0u;
             static int32_t kr_next = -1;     /* (the KICK ROLL's next hit, samples from this block's start; -1:
                                           * waiting for a step) */
@@ -2754,7 +2199,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
                 b_on = b_drop = b_rew = build_wait = gap_now = 0u;   /* (stopped: no build) */
             if (b_on && half_due >= 0 && half_due < (int32_t)m) {   /* (the 32nd between two steps) */
                 pa[np] = (uint16_t)half_due;
-                who[np++] = 1u << PV_SNARE;
+                np++;            /* (the build's roll: the bass's note again) */
             }
             if (half_due >= 0 && (half_due -= (int32_t)m) < 0)
                 half_due = -1;
@@ -2805,11 +2250,10 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
                                           * each; LOAF BREAKER: the snare's, the kick's, or the two in turn) */
                             int kick = sty == DS_KICK || (sty == DS_BOTH && !((b_steps / div) & 1u));
                             if (kick && nk < 8u) {
-                                kpm[nk] = 1.0f;
                                 ka[nk++] = off[k];
                             } else if (!kick && np < 8u) {
                                 pa[np] = off[k];
-                                who[np++] = 1u << PV_SNARE;
+                                np++;            /* (the build's roll: the bass's note again) */
                                 if (q4 >= 3u)
                                     half_due = (int32_t)off[k] + (int32_t)((float)BRK_SR * 7.5f / brk_get_tempo());
                             }
@@ -2842,192 +2286,62 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
                 if (krp && kr_next < 0 && (krp < 4u || !(s & 3u)))   /* (the KICK ROLL: from this step; TRI's
                                           * from the next beat) */
                     kr_next = (int32_t)off[k];
-                uint32_t w = 0u, d, bar = idx[k] >> 4 & 3u;
-                for (d = DR_SNARE; d < NDRUMS; d++)   /* (LOAF BREAKER: every drum, its bar) */
-                    w |= (uint32_t)(drum_now[d][bar] >> s & 1u) << (d - 1u);
-                if (drum_now[DR_KICK][bar] >> s & 1u && !krp) {   /* (a KICK ROLL: its hits instead) */
-                    const pat_t *pp = &pats.p[set.pattern % NPAT];   /* (its note: this step of its bar) */
-                    uint32_t ks = (bar % drum_bars(pp, DR_KICK)) * 16u + s;
-                    int32_t kn = kick_note(pp, ks);
-                    float f = kn ? brk_exp2f((float)kn * (1.0f / 12.0f)) : 1.0f;
-                    x2_pm = f;           /* (0.9.48: X2's added kicks take the last one's note) */
-                    if (step_hit(set.pattern, DR_KICK, ks, (int32_t)off[k],   /* (LOAF BREAKER: the step's CHANCE,
-                                          * NUDGE, HITS) */
-                                 (int32_t)((float)BRK_SR * 15.0f / brk_get_tempo()), 1u, 0u, f) && nk < 8u) {
-                        kpm[nk] = f;
-                        ka[nk++] = off[k];
-                    }
-                } else if ((kxm & 2u || (kxm & 1u && !(s & 1u))) && !krp && drum_now[DR_KICK][bar] && nk < 8u) {
-                    kpm[nk] = x2_pm;     /* (0.9.48, FLEXOR: X2, a kick on this odd step (1, 3 .. 15) of a bar with
-                                          * kicks: four to the floor, eight; 0.9.55 X4: on every step, sixteen) */
-                    ka[nk++] = off[k];
-                }
-                if (w && np < 8u) {      /* (LOAF BREAKER: each drum's step, its CHANCE, NUDGE, HITS) */
-                    uint32_t dd2, now = 0u;
-                    int32_t len = (int32_t)((float)BRK_SR * 15.0f / brk_get_tempo());
-                    const pat_t *pp = &pats.p[set.pattern % NPAT];
-                    for (dd2 = DR_SNARE; dd2 < NDRUMS; dd2++)
-                        if (w >> (dd2 - 1u) & 1u &&
-                            step_hit(set.pattern, dd2, (bar % drum_bars(pp, dd2)) * 16u + s, (int32_t)off[k], len, 0u,
-                                     (uint8_t)(1u << (dd2 - 1u)), 1.0f))
-                            now |= 1u << (dd2 - 1u);
-                    if (now) {
-                        pa[np] = off[k];
-                        who[np++] = (uint8_t)now;
-                    }
-                }
-            }
-            {                            /* LOAF BREAKER: the HITS due in this block, in with the steps' (in order) */
-                uint32_t q = 0u, a, b;
-                if (!st.playing)
-                    hq_n = 0u;
-                while (q < hq_n) {
-                    if (hq[q].at < (int32_t)m) {
-                        if (hq[q].kick && nk < 8u) {
-                            kpm[nk] = hq[q].pm;
-                            ka[nk++] = (uint16_t)(hq[q].at < 0 ? 0 : hq[q].at);
-                        } else if (!hq[q].kick && np < 8u) {
-                            pa[np] = (uint16_t)(hq[q].at < 0 ? 0 : hq[q].at);
-                            who[np++] = hq[q].who;
-                        }
-                        hq[q] = hq[--hq_n];
-                    } else {
-                        hq[q].at -= (int32_t)m;
-                        q++;
-                    }
-                }
-                for (a = 1; a < nk; a++)         /* (the kick's hits rising) */
-                    for (b = a; b > 0u && ka[b - 1u] > ka[b]; b--) {
-                        uint16_t to = ka[b];
-                        float tp = kpm[b];
-                        ka[b] = ka[b - 1u];
-                        kpm[b] = kpm[b - 1u];
-                        ka[b - 1u] = to;
-                        kpm[b - 1u] = tp;
-                    }
-                for (a = 1; a < np; a++)         /* (the others' rising) */
-                    for (b = a; b > 0u && pa[b - 1u] > pa[b]; b--) {
-                        uint16_t to = pa[b];
-                        uint8_t tw = who[b];
-                        pa[b] = pa[b - 1u];
-                        who[b] = who[b - 1u];
-                        pa[b - 1u] = to;
-                        who[b - 1u] = tw;
-                    }
-            }
-            if (kick_hold)
-                nk = 0u;                 /* LOAF BREAKER: KIL held: the sequencer's kicks quiet (a roll still plays) */
-            if (krp && st.playing) {     /* the KICK ROLL's hits in this block, at its pad's rate */
+            }                            /* (the drums' lanes: gone, the bass's lines play on these steps: bline.c) */
+            if (krp && st.playing) {     /* the rolls THRU the bass (LOAF BREAKER: the KICK ROLL; TRI its triplets): the
+                                          * bass's note again at the pad's rate */
                 static const float RS[BRK_ROLL_DIVS] = {4.0f, 2.0f, 1.0f, 0.5f, 0.25f, 4.0f / 3.0f, 2.0f / 3.0f,
                                                         1.0f / 3.0f, 6.0f, 3.0f, 1.5f};   /* (16ths: brk.c's ROLL_STEPS) */
                 int32_t per = (int32_t)((krp >= 4u ? 4.0f / 3.0f : RS[set.pads.roll_div[(krp - 1u) % 3u] % BRK_ROLL_DIVS]) *
                                         (float)BRK_SR * 15.0f / brk_get_tempo());   /* (0.9.55: TRI, 1/8T) */
-                nk = 0u;                 /* (the roll, alone, in order) */
                 while (kr_next >= 0 && kr_next < (int32_t)m && nk < 8u && per > 0) {
-                    kpm[nk] = krp >= 4u ? x2_pm : 1.0f;   /* (TRI: the last kick's note) */
                     ka[nk++] = (uint16_t)kr_next;
                     kr_next += per;
                 }
                 if (kr_next >= (int32_t)m)
                     kr_next -= (int32_t)m;
-                if (kick_hold && krp >= 4u)
-                    nk = 0u;             /* (0.9.57, FLEXOR: KIL quiets the triplets too, the ARP's KICK TRI as well;
-                                          * a roll pad's KICK ROLL still plays) */
             }
-            int vs = vin && (tape0 < 1.0f || st.tape < 1.0f);
-            if (vs)
-                for (i = 0; i < m; i++)  /* (the engine's ramp, this block's end; between, straight) */
-                    spd[i] = tape0 + (st.tape - tape0) * (float)(i + 1u) / (float)m;
-            {                            /* the vinyl held: the drums' own steps quiet, as the break's; 0.9.67, FLEXOR
-                                          * ("le vinyl stop coupe le kick plutôt que de le ralentir"): the record's steps
-                                          * instead, a step clock that slows with it, so the kicks and the drums come on,
-                                          * further and further apart, down to the stop */
-                static uint8_t v_on, v_idx;
-                static uint32_t v_since;
-                static float v_pos;
-                static int32_t v_last;
-                if (vin && (st.pads >> PAD_TAPESTOP & 1u) && st.playing) {
-                    float sl = (float)BRK_SR * 15.0f / brk_get_tempo();
-                    if (!v_on) {
-                        v_on = 1u;
-                        v_pos = (float)v_idx + (float)v_since / sl;
-                        v_last = (int32_t)v_pos;
+            {                            /* the BASS (bline.c): its lines on the steps, the build's and the rolls' hits
+                                          * its note again; the bus the kick's was (LOAF BREAKER: the kick, the drums) */
+                uint32_t a, b, nr = 0u;
+                uint16_t rh[16];
+                for (a = 0; a < nk && nr < 16u; a++)
+                    rh[nr++] = ka[a];
+                for (a = 0; a < np && nr < 16u; a++)
+                    rh[nr++] = pa[a];
+                for (a = 1; a < nr; a++)         /* (rising) */
+                    for (b = a; b > 0u && rh[b - 1u] > rh[b]; b--) {
+                        uint16_t to = rh[b];
+                        rh[b] = rh[b - 1u];
+                        rh[b - 1u] = to;
                     }
-                    nk = np = 0u;
-                    for (i = 0; i < m; i++) {
-                        int32_t q;
-                        v_pos += (vs ? spd[i] : 1.0f) / sl;
-                        q = (int32_t)v_pos;
-                        if (q != v_last) {
-                            uint32_t n = (uint32_t)q & 63u, s = n & 15u, bar = n >> 4 & 3u, d, w = 0u;
-                            v_last = q;
-                            if (drum_now[DR_KICK][bar] >> s & 1u && !kick_hold && nk < 8u) {
-                                kpm[nk] = x2_pm;
-                                ka[nk++] = (uint16_t)i;
-                            }
-                            for (d = DR_SNARE; d < NDRUMS; d++)
-                                w |= (uint32_t)(drum_now[d][bar] >> s & 1u) << (d - 1u);
-                            if (w && np < 8u) {
-                                pa[np] = (uint16_t)i;
-                                who[np++] = (uint8_t)w;
-                            }
-                        }
+                bl_mute = kick_hold;     /* (KIL: the line quiet while held or latched) */
+                {
+                    uint8_t sw = (uint8_t)((terror_off ? 1u : 0u) | (drive_off ? 2u : 0u) | (subfx_off ? 4u : 0u));
+                    if (sw != bl_sw) {   /* (DST, DRV, SUB pressed: the sound sent again) */
+                        bl_sw = sw;
+                        bl_snd_new = 1u;
                     }
-                } else
-                    v_on = 0u;
-                if (ne) {                /* (where the pattern is, for the next vinyl) */
-                    v_idx = idx[ne - 1u];
-                    v_since = m - off[ne - 1u];
-                } else
-                    v_since += m;
-            }
-            tape0 = st.tape;
-            kick_speed(vs ? spd : 0);
-            perc_speed(vs ? spd : 0);
-            kick_hit_n += nk;
-            kick_pitches(kpm);
-            kick_set_beat((float)BRK_SR * 60.0f / brk_get_tempo());   /* (TEST: the REVERSE BASS's beat) */
-            kick_render(kick, m, ka, nk);
-            {                            /* (TEST: the kick's scope: from its hit, 250 ms) */
-                static uint32_t ki = KSC_N;
-                uint32_t i0 = 0u, c;
-                if (nk) {
-                    ki = 0u;
-                    i0 = ka[nk - 1u];
-                    for (c = 0; c < KSC_W; c++)
-                        kscope[c] = 0;
-                    kscope_hit++;
                 }
-                for (i = i0; i < m && ki < KSC_N; i++, ki++) {
-                    int32_t v = (int32_t)(kick[i] * 1000.0f);
-                    c = ki * KSC_W / KSC_N;
-                    if ((v < 0 ? -v : v) > (kscope[c] < 0 ? -kscope[c] : kscope[c]))
-                        kscope[c] = (int16_t)(v > 32000 ? 32000 : v < -32000 ? -32000 : v);
-                }
+                bl_fx = (uint8_t)(kxm & 3u); /* (X2: an octave up; X4: every note ACCENTED) */
+                bl_render(kick, m, off, idx, ne, st.playing, rh, nr);
+                kick_hit_n += bl_non;    /* (the screen's and the PLAY light's flash: on the bass's notes) */
+                meter_bass = meter(kick, m, meter_bass);
             }
-            brk_fx_kick_eq(kick, m);    /* LOAF BREAKER: HOME's KICK EQ */
-            brk_fx_kick(kick, m);        /* and its KICK FX */
-            {                            /* the BASS LINES (bline.c): on the same steps, into the kick's bus (after its
-                                          * EQ and FX: the bass its own sound) */
-                float *bassb = kl;       /* (kl: free until the overlays below fill it from the kick: no RAM spent) */
-                bl_render(bassb, m, off, idx, ne, st.playing);
-                for (i = 0; i < m; i++)
-                    kick[i] += bassb[i];
-                meter_bass = meter(bassb, m, meter_bass);
-            }
-            perc_render(perc, m, pa, who, np);
+            brk_fx_kick_eq(kick, m);    /* the BASS's EQ (LOAF BREAKER: HOME's KICK EQ) */
+            brk_fx_kick(kick, m);        /* and its FX (the KICK FX) */
+            for (i = 0; i < m; i++)
+                perc[i] = 0.0f;          /* (the drums: gone; their bus silent) */
             if (set.duck) {              /* LOAF BREAKER (crossbreed): DUCK: the break (and its throws; DRUMS: the
                                           * other drums too) pushed down at each kick, in its attack, back up over its
                                           * release (KNOB) */
                 static float dt, de;
                 float depth = (float)(set.duck > 100u ? 100u : set.duck) * 0.01f;
                 float da = 1.0f / (1.0f + att_ms(set.duck_att) * 44.1f), dr = 1.0f - 1.0f / (rel_ms(set.duck_rel) * 44.1f);
-                int dp = set.duck_what == 1u || set.duck_what == 2u, db = set.duck_what != 2u;   /* (0.9.64: PERC,
-                                          * the drums alone) */
+                int db = set.duck_what != 2u;
                 uint32_t j = 0u;
                 for (i = 0; i < m; i++) {
                     float g;
-                    while (j < nk && ka[j] <= i) {
+                    while (j < bl_non && bl_on[j] <= i) {   /* (the bass's notes: DUCK pumps the break under them) */
                         dt = 1.0f;
                         j++;
                     }
@@ -3039,8 +2353,6 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
                         echo[i] *= g;
                         verb[i] *= g;
                     }
-                    if (dp)
-                        perc[i] *= g;
                 }
             }
             brk_fx_drum_type(dft_kind());   /* (0.9.67: its kind) */
@@ -3287,8 +2599,7 @@ void app_panic(void)
 #include "ui/ovl.c"
 #include "ui/seq.c"
 #include "ui/bass.c"                  /* the BASS: SEQ and EDIT */
-#include "ui/kick.c"
-#include "ui/perc.c"
+#include "ui/beq.c"                   /* the BASS's EQ (LOAF BREAKER's KICK EQ) */
 #include "ui/mixer.c"
 #include "ui/track.c"                 /* (LOAF BREAKER: ENV's TRACKS, PLAY, DROP) */
 #include "ui/tutor.c"                 /* (LOAF BREAKER: the TUTORIAL) */

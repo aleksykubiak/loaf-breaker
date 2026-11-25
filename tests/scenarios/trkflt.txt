@@ -4,12 +4,10 @@
 wait 4200
 tap ENV
 wait 300
-expect kslot 3
 press SEL
 turn SELECT -6 10
 release SEL
 wait 200
-expect kslot 3
 expect kick_dj -26
 shot sel_flt.png
 tap PLAY

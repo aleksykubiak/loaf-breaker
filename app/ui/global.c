@@ -41,7 +41,7 @@ static void tut_start(void);
 static void tut_quit(void);
 /* LOAF BREAKER (0.9.57, FLEXOR): SYSTEM › LIGHTS: K1 GLOW (the lights at rest), K2 PULSE (on the tempo while PLAY
  * runs: OFF, each KICK, 1/8, 1/4, 1/2, a BAR), K3 PULSE ON (which lights), K4 STYLE; set.leds, app.c led_cfg */
-static const char *const LP_NAME[LP_N] = {"OFF", "KICK", "1/8", "1/4", "1/2", "BAR"};
+static const char *const LP_NAME[LP_N] = {"OFF", "BASS", "1/8", "1/4", "1/2", "BAR"};
 static const char *const LO_NAME[LO_N] = {"BUTTONS", "WHITE KEYS", "BLACK KEYS", "ALL KEYS", "EVERYTHING"};
 static const char *const LS_NAME[LS_N] = {"FLASH", "FADE", "BREATHE", "BLINK", "CHASE"};
 static uint32_t lt_lb, lt_lk, lt_mb, lt_mk, lt_db, lt_dk;   /* (the lights as main.c's leds() last set them: lit,

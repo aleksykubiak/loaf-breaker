@@ -13,8 +13,9 @@
 
 #define BS_KEYS 0x7FFFFFFu               /* the 27 keys' bits: each its semitone from the lowest, an F */
 static int32_t tab(int32_t x, const char *s, int on);   /* (main.c) */
-enum { BT_OSC, BT_FILT, BT_ENV, BT_N };
-static const char *const BT_NAME[BT_N] = {"OSC", "FILTER", "ENV"};
+enum { BT_OSC, BT_FILT, BT_ENV, BT_N, BT_EQ = BT_N, BT_FX, BT_ALL };   /* (EQ, FX: their own pages, PG_KEQ and the
+                                          * FX page's BASS FX slots, LOAF BREAKER's KICK EQ and KICK FX) */
+static const char *const BT_NAME[BT_ALL] = {"OSC", "FILTER", "ENV", "EQ", "FX"};
 static const uint8_t BT_PAR[BT_N][4] = {{BS_WAVE, BS_SUB, BS_DRIVE, 0xFFu},   /* (0xFF: the line's LEVEL) */
                                         {BS_CUTOFF, BS_RESO, BS_ENV, BS_KEYTRK},
                                         {BS_DECAY, BS_SUSTAIN, BS_ACCENT, BS_GLIDE}};
@@ -40,8 +41,12 @@ static uint32_t bs_len(const char *t)   /* (no libc on the FM-1) */
     return n;
 }
 
-static int bs_page(void) { return ui.page == PG_BSEQ || ui.page == PG_BEDIT; }
-static bl_line_t *bs_line(void) { return &bls.l[bls.sel % BL_N]; }
+static int bs_page_n(uint32_t p) { return p == PG_BSEQ || p == PG_BEDIT; }
+static int bs_page(void) { return bs_page_n(ui.page); }
+static void kfx_open(int on);            /* (main.c) */
+#define IS_KFX() (ui.page == PG_FX && ui.fx_focus >= BRK_FX_SLOTS)   /* (main.c's, the BASS FX slots shown) */
+static void bs_bank_go(uint32_t b);
+static bl_line_t *bs_line(void) { return bl_at(bls.sel); }
 static void bs_dirty(void) { set_dirty = 1u; }
 
 static void note_text(uint32_t n, char *t)   /* 45 -> "A2" */
@@ -57,21 +62,33 @@ static void note_text(uint32_t n, char *t)   /* 45 -> "A2" */
 
 static void bs_open(uint32_t pg)
 {
+    if (IS_KFX())
+        kfx_open(0);
+    if (bs.tab >= BT_N)                  /* (back from EQ or FX: OSC) */
+        bs.tab = 0u;
     ui.page = (uint8_t)pg;
     ui.redraw |= RG_HEAD | RG_WAVE | RG_BLOCKS | RG_FOOT;
     page_say();
 }
 
-static void bs_pick(uint32_t n)          /* a line selected: playing, at the next bar; stopped, at once */
+static void bs_line_text(uint32_t n, char *t)   /* 0..63 -> "B1 LINE 3" */
 {
-    char t[16] = "LINE ";
-    n %= BL_N;
+    t[0] = 'B';
+    int_text((int32_t)(n % BL_ALL / BL_N) + 1, t + 1);
+    text_cat(t, " LINE ");
+    int_text((int32_t)(n % BL_N) + 1, t + bs_len(t));
+}
+
+static void bs_pick(uint32_t n)          /* a line selected (0..63): playing, at the next bar; stopped, at once */
+{
+    char t[16];
+    n %= BL_ALL;
     bls.sel = (uint8_t)n;
-    int_text((int32_t)n + 1, t + 5);
+    bs_line_text(n, t);
     if (!playing_now()) {
         bl_play = (uint8_t)n;
         bl_sound_changed();
-        app_say(t, bl_empty(n) ? "EMPTY: REC IT" : BASS_PRESET_NAME[bls.l[n].preset % BASS_PRESETS]);
+        app_say(t, bl_empty(n) ? "EMPTY: REC IT" : BASS_PRESET_NAME[bl_at(n)->preset % BASS_PRESETS]);
     } else
         app_say(t, bl_play == n ? "PLAYING" : "AT THE NEXT BAR");
     bs_dirty();
@@ -138,11 +155,16 @@ static void bs_keys(uint32_t keys, uint32_t kdn, uint32_t kup, uint32_t btn)
     kdn &= BS_KEYS;
     kup &= BS_KEYS;
     if (btn & 1u << B_SEQ) {
-        for (i = 0; i < 8u; i++)
+        for (i = 0; i < 8u; i++) {
             if (kdn >> WK[i] & 1u) {
-                bs_pick(i);
+                bs_pick(bl_bank_sel() * BL_N + i);
                 bs.seq_used = 1u;
             }
+            if (kdn >> BK[i] & 1u) {
+                bs_bank_go(i);
+                bs.seq_used = 1u;
+            }
+        }
         return;
     }
     for (i = 0; i < 27u; i++)
@@ -165,11 +187,16 @@ static void bs_keys_any(uint32_t kdn, uint32_t btn)
     uint32_t i;
     if (!(btn & 1u << B_SEQ) || bs_page())
         return;
-    for (i = 0; i < 8u; i++)
+    for (i = 0; i < 8u; i++) {
         if (kdn >> WK[i] & 1u) {
-            bs_pick(i);
+            bs_pick(bl_bank_sel() * BL_N + i);
             bs.seq_used = 1u;
         }
+        if (kdn >> BK[i] & 1u) {
+            bs_bank_go(i);
+            bs.seq_used = 1u;
+        }
+    }
 }
 
 static void bs_rec_toggle(void)
@@ -181,9 +208,9 @@ static void bs_rec_toggle(void)
 
 static void bs_clear(void)
 {
-    char t[16] = "LINE ";
+    char t[16];
     bl_line_clear(bls.sel);
-    int_text((int32_t)bls.sel + 1, t + 5);
+    bs_line_text(bls.sel, t);
     app_say(t, "CLEARED");
     bs_dirty();
     ui.redraw |= RG_BLOCKS | RG_FOOT;
@@ -195,17 +222,15 @@ static void bs_copy_paste(void)          /* SEL + SEQ: the line copied; on anoth
     if (bs.clip < 0 || bs.clip == (int8_t)bls.sel) {
         bs.clip = (int8_t)bls.sel;
         t[0] = 0;
-        text_cat(t, "COPIED LINE ");
-        int_text((int32_t)bls.sel + 1, t + bs_len(t));
+        text_cat(t, "COPIED ");
+        bs_line_text(bls.sel, t + bs_len(t));
         app_say(t, "PICK ANOTHER, SEL + SEQ");
         return;
     }
-    bls.l[bls.sel] = bls.l[(uint32_t)bs.clip % BL_N];
+    *bl_at(bls.sel) = *bl_at((uint32_t)bs.clip);
     t[0] = 0;
-        text_cat(t, "PASTED ");
-    int_text(bs.clip + 1, t + bs_len(t));
-    text_cat(t, " > ");
-    int_text((int32_t)bls.sel + 1, t + bs_len(t));
+        text_cat(t, "PASTED > ");
+    bs_line_text(bls.sel, t + bs_len(t));
     app_say(t, "SEL + SAVE KEEPS IT");
     bs.clip = -1;
     if (bl_play == bls.sel)
@@ -249,6 +274,69 @@ static float *bs_par(uint32_t i)         /* EDIT's knob i on its part: the setti
     return p == 0xFFu ? &bs_line()->snd.volume : &bs_line()->snd.p[p];
 }
 
+/* SEL + K1-K4 on any page (LOAF BREAKER's kick knobs): the line playing's CUTOFF, RESO, ENV, DECAY; HOME's K4 its
+ * CUTOFF too */
+static const uint8_t BS_LIVE[4] = {BS_CUTOFF, BS_RESO, BS_ENV, BS_DECAY};
+static const char *bs_live_name(uint32_t i) { return BASS_PARAM_NAME[BS_LIVE[i & 3u]]; }
+static void bs_live_value(uint32_t i, char *t)
+{
+    float v = bl_at(bl_play)->snd.p[BS_LIVE[i & 3u]];
+    t[0] = 0;
+    if ((i & 3u) == 0u)
+        hz_text(bass_cutoff_hz(v), t);
+    else if ((i & 3u) == 3u) {
+        int_text((int32_t)bass_decay_ms(v), t);
+        text_cat(t, " MS");
+    } else
+        pct_text(v, t);
+}
+static void bs_live(uint32_t i, int32_t d)
+{
+    float *p = &bl_at(bl_play)->snd.p[BS_LIVE[i & 3u]];
+    char t[16];
+    *p = knob_f(*p, d, 0.01f, 0.0f, 1.0f);
+    bl_sound_changed();
+    bs_dirty();
+    bs_live_value(i, t);
+    app_say(bs_live_name(i), t);
+    ui.redraw |= RG_BLOCKS | RG_FOOT;
+}
+
+/* EDIT's parts, round: OSC, FILTER, ENV (its own page), EQ (PG_KEQ), FX (the FX page's BASS FX slots) */
+static void bs_part_go(uint32_t t)
+{
+    t %= BT_ALL;
+    if (IS_KFX())
+        kfx_open(0);
+    bs.tab = (uint8_t)t;
+    if (t == BT_EQ)
+        ui.page = PG_KEQ;
+    else if (t == BT_FX) {
+        ui.page = PG_FX;
+        kfx_open(1);
+    } else
+        ui.page = PG_BEDIT;
+    ui.redraw |= RG_HEAD | RG_WAVE | RG_BLOCKS | RG_FOOT;
+    page_say();
+}
+static void bs_part_turn(int32_t d) { bs_part_go((bs.tab + BT_ALL + (uint32_t)(d > 0 ? 1 : -1)) % BT_ALL); }
+
+/* a bank (SEQ + black key 1-8, SEL + PRESETS): the line's place in it kept; playing, at the next bar */
+static void bs_bank_go(uint32_t b)
+{
+    char t[16];
+    bl_bank_pick(b);
+    if (!playing_now()) {
+        bl_play = bls.sel;
+        bl_sound_changed();
+    }
+    bs_line_text(bls.sel, t);
+    app_say(t, playing_now() && bl_play != bls.sel ? "AT THE NEXT BAR" : bl_empty(bls.sel) ? "EMPTY: REC IT" : "");
+    bs_dirty();
+    ui.redraw |= RG_HEAD | RG_BLOCKS | RG_FOOT;
+}
+static void bs_bank_turn(int32_t d) { bs_bank_go((bl_bank_sel() + BL_BANKS + (uint32_t)(d > 0 ? 1 : -1)) % BL_BANKS); }
+
 /* a knob on the two pages (input): 1 taken (SEL held: SEL's own, everywhere) */
 static int bs_enc(int k, int32_t d, uint32_t btn)
 {
@@ -256,7 +344,7 @@ static int bs_enc(int k, int32_t d, uint32_t btn)
     if (btn & 1u << B_SEL || !bs_page())
         return 0;
     if (k == EN_ALGO) {                  /* the line, on both */
-        bs_pick((bls.sel + BL_N + (uint32_t)(d > 0 ? 1 : -1)) % BL_N);
+        bs_pick((bls.sel + BL_ALL + (uint32_t)(d > 0 ? 1 : -1)) % BL_ALL);
         return 1;
     }
     if (ui.page == PG_BSEQ) {
@@ -297,9 +385,9 @@ static int bs_enc(int k, int32_t d, uint32_t btn)
         ui.redraw |= RG_BLOCKS | RG_FOOT;
         return 1;
     }
-    if (k == EN_SELECT) {                /* EDIT: its parts */
-        bs.tab = (uint8_t)((bs.tab + BT_N + (uint32_t)(d > 0 ? 1 : -1)) % BT_N);
-        page_say();
+    if (k == EN_SELECT) {                /* EDIT: its parts (EQ, FX: their pages) */
+        bs_part_turn(d);
+        return 1;
     } else if (k >= EN_K1 && k <= EN_K4) {
         float *p = bs_par((uint32_t)(k - EN_K1));
         *p = knob_f(*p, d, 0.01f, 0.0f, 1.0f);
@@ -392,24 +480,26 @@ static float bs_norm(int i) { return ui.page == PG_BEDIT ? *bs_par((uint32_t)i) 
 
 static void bs_say(char *t)              /* the header's part */
 {
-    text_cat(t, "LINE ");
-    int_text((int32_t)bls.sel + 1, t + bs_len(t));
+    bs_line_text(bls.sel, t + bs_len(t));
     if (ui.page == PG_BEDIT) {
         text_cat(t, " ");
-        text_cat(t, BT_NAME[bs.tab % BT_N]);
+        text_cat(t, BT_NAME[bs.tab % BT_ALL]);
     }
 }
 
 static void bs_tabs(int32_t x)           /* the tabs under the header */
 {
     uint32_t i;
-    if (ui.page == PG_BEDIT) {
-        for (i = 0; i < BT_N; i++)
-            x = tab(x, BT_NAME[i], i == bs.tab);
+    if (ui.page != PG_BSEQ) {            /* (EDIT, its EQ and FX pages) */
+        uint32_t on = ui.page == PG_KEQ ? BT_EQ : IS_KFX() ? BT_FX : bs.tab;
+        for (i = 0; i < BT_ALL; i++)
+            x = tab(x, BT_NAME[i], i == on);
     } else {
         char t[8];
         note_text(12u * (bls.oct + 1u) + 5u, t);
-        x = tab(x, "LINES", 1);
+        char bk[8] = "BANK ";
+        int_text((int32_t)bl_bank_sel() + 1, bk + 5);
+        x = tab(x, bk, 1);
         x = tab(x, bs.rec ? "REC ON" : "REC", bs.rec);
         cv_text(236 - text_w(&FONT_T, t) - text_w(&FONT_T, "KEYS "), 1, &FONT_T, "KEYS ", C_DIM);
         cv_text(236 - text_w(&FONT_T, t), 1, &FONT_T, t, C_GRAY);
@@ -442,9 +532,10 @@ static void bs_seq_band(int32_t top)
     char t[40];
     brk_status(&st);
     playing = st.playing && bl_play == bls.sel;
-    for (i = 0; i < BL_N; i++) {         /* the eight lines */
+    for (i = 0; i < BL_N; i++) {         /* the bank's eight lines */
+        uint32_t n = bl_bank_sel() * BL_N + i;
         int32_t x = 2 + (int32_t)i * 30, y = 46 - top;
-        int sel = i == bls.sel, play = st.playing && i == bl_play, empty = bl_empty(i);
+        int sel = n == bls.sel, play = st.playing && n == bl_play, empty = bl_empty(n);
         cv_rect(x, y, 28, 16, sel ? C_HI : C_BLOCK);
         t[0] = 0;
         int_text((int32_t)i + 1, t);
@@ -508,10 +599,8 @@ static void bs_seq_band(int32_t top)
                 BASS_PRESET_NAME[l->preset % BASS_PRESETS], C_GRAY);
         y += 16;
         if (st.playing && bls.sel != bl_play) {
-            t[0] = 0;
-        text_cat(t, "LINE ");
-            int_text((int32_t)bls.sel + 1, t + 5);
-            text_cat(t, " COMES IN AT THE NEXT BAR");
+            bs_line_text(bls.sel, t);
+            text_cat(t, " AT THE NEXT BAR");
             cv_text(4, y, &FONT_XS, t, C_AMB);
         } else if (bs.rec)
             cv_text(4, y, &FONT_XS, st.playing ? "REC: PLAY IN TIME, HOLD A KEY: A LONG NOTE"
@@ -547,9 +636,7 @@ static void bs_edit_band(int32_t top)
             int32_t v0 = bass_scope[(s0 + j) % BASS_SCOPE_N], v1 = bass_scope[(s0 + j + 1u) % BASS_SCOPE_N];
             cv_line(1 + (int32_t)j, mid - v0 * 26 / pk, 2 + (int32_t)j, mid - v1 * 26 / pk, C_HI);
         }
-        t[0] = 0;
-        text_cat(t, "LINE ");
-        int_text((int32_t)bls.sel + 1, t + 5);
+        bs_line_text(bls.sel, t);
         cv_text(4, 46 - top, &FONT_T, t, C_WHITE);
         cv_text(236 - text_w(&FONT_T, BASS_PRESET_NAME[l->preset % BASS_PRESETS]), 46 - top, &FONT_T,
                 BASS_PRESET_NAME[l->preset % BASS_PRESETS], C_GRAY);

@@ -392,7 +392,7 @@ static struct {
     uint8_t kpage, klayer, kpreset;      /* the KICK page: its sub-page (KP_*), the layer it edits, the preset */
     uint8_t mpage;                       /* the MIXER's half: 0 LEVELS (break, kick, perc, FX), 1 GROOVE */
     uint8_t seq_lane, seq_step;          /* the SEQ page: the lane (SL_*) and the break step (0..31) it edits */
-    uint8_t pvoice, ppage, ppreset[PERC_VOICES];   /* the SNARE / HAT page: its voice, sub-page, presets */
+    uint8_t pvoice, ppage, ppreset[4];   /* (LOAF BREAKER's drums' pages: gone; their bytes kept) */
     uint8_t einst;                       /* EDIT, the drums' design: DR_*: the kick (PG_KICK), the snare, the hat, the
                                           * clap (PG_PERC) */
     uint8_t rec;                         /* REC: white keys and MIDI notes write into the pattern as it plays */

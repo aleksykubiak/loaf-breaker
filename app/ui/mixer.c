@@ -39,7 +39,7 @@ static void mix_value(uint32_t h, int i, char *t)
         text_cat(t, "%");
     } else if (i < 3)                    /* (K4: the MELODY's, 0.200-0.208; the ARP's route in 0.9.29-0.9.30, SENDS'
                                           * alone since, FLEXOR) */
-        pct_text(i == 1 ? set.kick.volume : set.perc.volume, t);
+        pct_text(i == 1 ? bls.vol : 0.0f, t);   /* (K2 the BASS's fader; K3 the drums', gone) */
 }
 
 /* the MIXER's strip: four channels side by side (a fader, its value; BREAK and KICK with their level meters, FX with
@@ -69,7 +69,7 @@ static void mix_fader(int32_t x, float v, int on)   /* 0..1 from the bottom */
 }
 static void mix_picture(int32_t top)
 {
-    static const char *const NAME[4][4] = {{"BREAK", "KICK", "PERC", ""}, {"FX", "DRUMS", "DUCKS", "ROLL"},
+    static const char *const NAME[4][4] = {{"BREAK", "BASS", "", ""}, {"FX", "BASS", "DUCKS", "ROLL"},
                                            {"COMP", "RATIO", "DUCK", "MAX OUT"},
                                            {"C ATTACK", "C RELEASE", "D RELEASE", "DUCKS"}};
     uint32_t c;
@@ -116,7 +116,7 @@ static void mix_picture(int32_t top)
             cv_text(70, 67, &FONT_XS, "AROUND", thru ? C_GRAY : C_BLACK);
         }
         {                                /* (0.9.64, FLEXOR: what DUCK ducks, the one taken lit; DUCK itself off: dim) */
-            static const char *const DN[3] = {"BREAK", "PERC", "BOTH"};
+            static const char *const DN[3] = {"BREAK", "BASS", "BOTH"};
             static const uint8_t DC[3] = {0u, 2u, 1u};
             uint32_t j;
             for (j = 0; j < 3u; j++) {
@@ -137,10 +137,8 @@ static void mix_picture(int32_t top)
     }
     mix_fader(10, (float)set.brk_level * 0.01f, set.brk_level > 0u);
     mix_meter(30, meter_brk);
-    mix_fader(70, set.kick.volume, set.kick.volume > 0.0f);
-    mix_meter(90, meter_kick);
-    mix_fader(130, set.perc.volume, set.perc.volume > 0.0f);
-    mix_meter(150, meter_perc);
+    mix_fader(70, bls.vol, bls.vol > 0.0f);   /* (the BASS's, LOAF BREAKER's KICK place) */
+    mix_meter(90, meter_bass);
 }
 static void draw_mixer(void)
 {

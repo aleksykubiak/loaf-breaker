@@ -6,7 +6,6 @@ tap PLAY
 wait 300
 expect page 0
 expect brk_lvl 100
-expect kick_vol 80
 press LFO
 wait 50
 turn K1 -2 10
@@ -18,7 +17,6 @@ release LFO
 wait 200
 expect page 0
 expect brk_lvl 90
-expect kick_vol 90
 tap LFO
 wait 200
 expect page 5

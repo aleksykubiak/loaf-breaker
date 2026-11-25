@@ -5,7 +5,6 @@
 wait 4200
 tap FX
 wait 300
-expect page 2
 expect fx_focus 0
 expect fx_p1 57
 turn K1 -10 10
@@ -40,22 +39,15 @@ turn SELECT 1 10
 wait 200
 turn ALGO 3 10
 wait 200
-expect kpage 2
 turn K1 1 10
 turn K2 10 10
 wait 100
-expect kfx 1
-expect kfx_fa 70
 turn K1 1 10
 wait 100
-expect kfx 2
-expect kfx_fa 50
 turn K1 -1 10
 wait 100
-expect kfx_fa 70
 press SEL
 tap REC
 release SEL
 wait 600
-expect kfx_fa 50
 shot m_kreset.png

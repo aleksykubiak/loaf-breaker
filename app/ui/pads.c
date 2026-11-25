@@ -4,8 +4,8 @@
 
 /* -------------------------------------------------- the pads' own settings --- */
 static void ovl_push(void);              /* (ovl.c) */
-static const char *const THRU_NAME[4] = {"BOTH", "BREAK", "KICK", "BOTH"};   /* VINYL's THRU */
-static const char *const ARP_THRU[4] = {"THRU", "BREAK", "KICK", "THRU"};   /* (0.9.29, FLEXOR: what the ARP's effects take,
+static const char *const THRU_NAME[4] = {"BOTH", "BREAK", "BASS", "BOTH"};   /* VINYL's THRU */
+static const char *const ARP_THRU[4] = {"THRU", "BREAK", "BASS", "THRU"};   /* (0.9.29, FLEXOR: what the ARP's effects take,
                                           * ovl_pad 6-7: 0 the whole mix, 1 the break, 2 the kick; also LFO's LEVELS K4, SENDS K3) */
 static void arp_thru_turn(uint32_t e, int32_t d)   /* BREAK, KICK, THRU in that order (FLEXOR); 0.9.50, FLEXOR: each
                                           * effect its own (app.c arp_route), saved */
@@ -93,7 +93,7 @@ static int ovl_pad_on(void);
 /* LOAF BREAKER: the three roll pads' THRU (MIX › SENDS K4 since 0.9.40, FLEXOR: their K2 the break's filter, to roll
  * and filter at once; K2 0.245-0.9.39; set.pads.rsv[0]): 0 BREAK (the roll as ever), 1 KICK (the kick rolled
  * at the pad's rate, the break left alone), 2 BOTH. kroll: the pad rolling the kick (app.c's render) */
-static const char *const ROLL_THRU_NAME[3] = {"BREAK", "KICK", "BOTH"};
+static const char *const ROLL_THRU_NAME[3] = {"BREAK", "BASS", "BOTH"};
 static uint8_t roll_held = 0xFFu;        /* the roll pad held (0xFF none) */
 static uint8_t roll_sel;                 /* (pressed with SEL held: the kick alone, whatever THRU says) */
 static void roll_thru_now(void)          /* (THRU turned while a roll pad is held: at once) */
@@ -927,7 +927,7 @@ static int bkf_lit(uint32_t f, const brk_status_t *st)
         return kbrk_hold != 0u;
     if (f == BKF_CHS)                    /* (0.9.76: CHAOS heard: the switch on and something set) */
         return !chaos_off && kx2.ch_tag == CH_TAG && (kx2.chaos[0] || kx2.chaos[1] || kx2.chaos[2]);
-    if (f == BKF_SDR)                    /* (0.9.57: SUB DRIVE, the SUB layer's effect DRIVE, heard) */
-        return set.kick.l[KL_SUB].fx == KFX_DRIVE && !subfx_off;
+    if (f == BKF_SDR)                    /* (SDR: the BASS's SUB, as SUB) */
+        return !subfx_off;
     return !subfx_off;                   /* (0.9.43: SUB, the SUB FX switch on, even with no effect set) */
 }

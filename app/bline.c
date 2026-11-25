@@ -1,18 +1,22 @@
 /* SPDX-License-Identifier: MPL-2.0 */
-/* BASS LINES (included by app.c, before the render): eight lines of two bars (32 steps) for the BASS (dsp/bass.c),
- * each with its own sound. SEQ records and edits them, EDIT shapes the sound of the one selected (ui/bass.c).
+/* BASS LINES (included by app.c, before the render): 64 lines of two bars (32 steps) for the BASS (dsp/bass.c), in
+ * eight BANKS of eight, each line with its own sound. SEQ records and edits them, EDIT shapes the sound of the one
+ * selected (ui/bass.c). A bank picked keeps the line's place in it (line 3 of bank 1 -> line 3 of bank 5).
  *   - a step: a note (0: a rest), ACCENT, SLIDE (it glides into the next step's note; into the same note: a tie)
  *   - the line selected is the line playing: picked while playing, it comes in at the next bar, from its first
  *     step (a live change of lines, on the bar); picked stopped, at once
  *   - the steps are the break's (brk_step_events): the tempo and the swing (PATTERN › GROOVE) are theirs
  *   - the keys played on SEQ and EDIT: the bass at once (last note first); while one is held the line is quiet
- * Kept in their own store object, OBJ_BASS (the room of KICK 11..20's memories, km2: the KICK menu is no longer
- * EDIT's, those memories start as the built-in kicks at each power-on). */
+ * All 64 in the pool (7.4 KB, the room the kick and the drums left), kept in two store objects, OBJ_BASS (the head
+ * and banks 1-4) and OBJ_BASS2 (banks 5-8), each the struct's own run of bytes (no copy). */
 
-#define BL_N 8u                          /* lines */
+#define BL_N 8u                          /* lines in a bank */
+#define BL_BANKS 8u
+#define BL_ALL (BL_N * BL_BANKS)
+#define BL_HALF (BL_ALL / 2u)            /* (the lines in each object) */
 #define BL_STEPS 32u                     /* two bars of 16ths */
-#define BL_MAGIC 0x31534142u             /* "BAS1" */
-#define OBJ_BASS OBJ_KMEM2
+#define BL_MAGIC 0x32534142u             /* "BAS2" (BAS1: one bank of eight, 25 Nov 2026) */
+#define BL_MAGIC2 0x62534142u            /* "BASb": the second object's */
 enum { BLF_ACC = 1u, BLF_SLD = 2u };
 typedef struct {
     uint8_t note, fl;                    /* note: MIDI (0: a rest); fl: BLF_* */
@@ -26,13 +30,20 @@ typedef struct {
 } bl_line_t;
 typedef struct {
     uint32_t magic;
-    uint8_t sel;                         /* the line selected (and playing, or coming in) */
+    uint8_t sel;                         /* the line selected, 0..63 (its bank sel / 8; playing, or coming in) */
     uint8_t oct;                         /* the keys' octave: the lowest key F of octave oct (F1 = 1) */
     uint8_t rsv[2];
-    bl_line_t l[BL_N];
+    float vol;                           /* the BASS's fader (MIX › LEVELS K2, LFO + K2) */
+    bl_line_t a[BL_HALF];                /* banks 1-4: OBJ_BASS, from magic to here */
+    uint32_t magic2;
+    bl_line_t b[BL_HALF];                /* banks 5-8: OBJ_BASS2, from magic2 */
 } bl_store_t;
-_Static_assert(sizeof(bl_store_t) <= 3840u, "a store object holds 3840 bytes");
-static bl_store_t bls;
+#define BL_SIZE_A offsetof(bl_store_t, magic2)
+#define BL_SIZE_B (sizeof(bl_store_t) - offsetof(bl_store_t, magic2))
+_Static_assert(BL_SIZE_A <= 3840u && BL_SIZE_B <= 3840u, "a store object holds 3840 bytes");
+static bl_store_t bls PLAT_POOL;
+static bl_line_t *bl_at(uint32_t n) { n %= BL_ALL; return n < BL_HALF ? &bls.a[n] : &bls.b[n - BL_HALF]; }
+static uint32_t bl_bank_sel(void) { return bls.sel / BL_N; }
 
 /* the render's (written there, read by the UI) */
 static volatile uint8_t bl_play;         /* the line playing */
@@ -42,12 +53,19 @@ static uint8_t bl_org;                   /* the step (brk_step_events' 0..63) th
 /* the main loop's, read by the render */
 static volatile uint8_t bl_live_note, bl_live_held, bl_live_new, bl_live_up;
 static volatile uint8_t bl_snd_new;      /* a sound changed: the render sends it to the engine */
+static volatile uint8_t bl_mute;         /* KIL (held or latched): the line quiet */
+static volatile uint8_t bl_sw;           /* the black keys' switches (app.c): bit 0 DST (its DRIVE pushed), bit 1 DRV (its
+                                          * DRIVE off), bit 2 SUB (its SUB off) */
+static volatile uint8_t bl_fx;           /* the black keys' X2 (bit 0: an octave up), X4 (bit 1: every note ACCENTED) */
+static uint16_t bl_on[8];                /* the render's: where its notes began in the block, for DUCK */
+static uint32_t bl_non;
+static uint8_t bl_last;                  /* the last note the line played (the rolls play it again) */
 
-static int bl_empty(uint32_t n)
+static int bl_empty(uint32_t n)          /* (n: 0..63) */
 {
     uint32_t i;
     for (i = 0; i < BL_STEPS; i++)
-        if (bls.l[n % BL_N].st[i].note)
+        if (bl_at(n)->st[i].note)
             return 0;
     return 1;
 }
@@ -74,12 +92,13 @@ static const uint8_t BL_DEF_SND[BL_N] = {0u, 1u, 2u, 3u, 4u, 5u, 0u, 3u};   /* t
 
 static void bl_line_clear(uint32_t n)
 {
-    memset(bls.l[n % BL_N].st, 0, sizeof bls.l[0].st);
+    memset(bl_at(n)->st, 0, sizeof bls.a[0].st);
 }
 
-static void bl_line_default(uint32_t n)
+static void bl_line_default(uint32_t n)  /* (bank 1: six lines to play with, two empty; the other banks empty, their
+                                          * sounds as bank 1's) */
 {
-    bl_line_t *l = &bls.l[n % BL_N];
+    bl_line_t *l = bl_at(n);
     uint32_t i;
     memset(l, 0, sizeof *l);
     bass_defaults(&l->snd);
@@ -100,8 +119,10 @@ static void bl_defaults(void)
     uint32_t n;
     memset(&bls, 0, sizeof bls);
     bls.magic = BL_MAGIC;
+    bls.magic2 = BL_MAGIC2;
     bls.oct = 1u;
-    for (n = 0; n < BL_N; n++)
+    bls.vol = 1.0f;
+    for (n = 0; n < BL_ALL; n++)
         bl_line_default(n);
     bl_play = 0u;
     bl_snd_new = 1u;
@@ -109,16 +130,26 @@ static void bl_defaults(void)
 
 static void bl_load(void)
 {
-    if (plat_store_load(OBJ_BASS, &bls, sizeof bls) != (int)sizeof bls || bls.magic != BL_MAGIC)
+    if (plat_store_load(OBJ_BASS, &bls, BL_SIZE_A) != (int)BL_SIZE_A || bls.magic != BL_MAGIC ||
+        plat_store_load(OBJ_BASS2, &bls.magic2, BL_SIZE_B) != (int)BL_SIZE_B || bls.magic2 != BL_MAGIC2)
         bl_defaults();
-    bls.sel %= BL_N;
+    bls.sel %= BL_ALL;
+    if (!(bls.vol >= 0.0f && bls.vol <= 1.0f))
+        bls.vol = 1.0f;
     if (bls.oct > 4u)
         bls.oct = 1u;
     bl_play = bls.sel;
     bl_snd_new = 1u;
 }
 
-static int bl_save(void) { return plat_store_save(OBJ_BASS, &bls, sizeof bls) == 0; }
+static int bl_save(void)
+{
+    return plat_store_save(OBJ_BASS, &bls, BL_SIZE_A) == 0 && plat_store_save(OBJ_BASS2, &bls.magic2, BL_SIZE_B) == 0;
+}
+static void bl_bank_pick(uint32_t b)     /* the bank b, the line's place in it kept; stopped: at once */
+{
+    bls.sel = (uint8_t)((b % BL_BANKS) * BL_N + bls.sel % BL_N);
+}
 
 static void bl_sound_changed(void) { bl_snd_new = 1u; }
 
@@ -132,16 +163,28 @@ static uint32_t bl_note_of(const bl_line_t *l, uint32_t i)
     return (uint32_t)(v < 12 ? 12 : v > 108 ? 108 : v);
 }
 
-/* render: the block's steps (brk_step_events') into the bass's notes, then the bass into out (overwritten) */
-static void bl_render(float *out, uint32_t m, const uint16_t *off, const uint8_t *idx, uint32_t ne, int playing)
+/* render: the block's steps (brk_step_events') into the bass's notes, the rolls' and the build's hits rh[0..nr-1]
+ * (rising) its last note again, then the bass into out (overwritten) */
+static void bl_render(float *out, uint32_t m, const uint16_t *off, const uint8_t *idx, uint32_t ne, int playing,
+                      const uint16_t *rh, uint32_t nr)
 {
     static uint8_t was_playing, live_was;
-    uint16_t at[8];
-    bass_note_t nt[8];
-    uint32_t k, nn = 0u;
+    uint16_t at[16];
+    bass_note_t nt[16];
+    uint32_t k, nn = 0u, r = 0u;
+    bl_non = 0u;
     if (bl_snd_new) {
+        bass_t b;
         bl_snd_new = 0u;
-        bass_set(&bls.l[bl_play % BL_N].snd);
+        b = bl_at(bl_play)->snd;
+        b.volume *= bls.vol;             /* (the BASS's fader) */
+        if (bl_sw & 1u)                  /* (DST: pushed) */
+            b.p[BS_DRIVE] = b.p[BS_DRIVE] < 0.85f ? 0.85f : b.p[BS_DRIVE];
+        if (bl_sw & 2u)                  /* (DRV: none) */
+            b.p[BS_DRIVE] = 0.0f;
+        if (bl_sw & 4u)                  /* (SUB: none) */
+            b.p[BS_SUB] = 0.0f;
+        bass_set(&b);
     }
     if (bl_live_up) {                    /* the key let go */
         bl_live_up = 0u;
@@ -167,27 +210,52 @@ static void bl_render(float *out, uint32_t m, const uint16_t *off, const uint8_t
         const bl_line_t *l;
         uint32_t pos, note, nx;
         if ((idx[k] & 15u) == 0u && bls.sel != bl_play) {   /* a bar's first step: the line picked comes in */
-            bl_play = bls.sel % BL_N;
+            bass_t b;
+            bl_play = bls.sel % BL_ALL;
             bl_org = idx[k];
-            bass_set(&bls.l[bl_play].snd);
+            bl_snd_new = 1u;             /* (its sound, switches and all, at the next block) */
+            b = bl_at(bl_play)->snd;
+            b.volume *= bls.vol;
+            bass_set(&b);
         }
         pos = (uint32_t)(idx[k] - bl_org) & (BL_STEPS - 1u);
         bl_pos = (uint8_t)pos;
         bl_steps_n = bl_steps_n + 1u;
-        if (bl_live_held || nn >= 8u)    /* (a key held: the line quiet under it) */
+        while (r < nr && rh[r] < off[k] && nn < 15u && bl_last && !bl_live_held) {   /* (the rolls' hits before it) */
+            at[nn] = rh[r++];
+            nt[nn].note = bl_last;
+            nt[nn].accent = 1u;
+            nt[nn].slide = nt[nn].rsv = 0u;
+            nt[nn].gate = brk_step_len_samples() / 3u;
+            nn++;
+        }
+        if (bl_live_held || bl_mute || nn >= 15u)   /* (a key held: the line quiet under it; KIL: quiet) */
             continue;
-        l = &bls.l[bl_play % BL_N];
+        l = bl_at(bl_play);
         note = bl_note_of(l, pos);
         if (!note)
             continue;
+        if (bl_fx & 1u && note <= 96u)   /* (X2: an octave up) */
+            note += 12u;
+        bl_last = (uint8_t)note;
         nx = (pos + 1u) % BL_STEPS;
         at[nn] = off[k];
         nt[nn].note = (uint8_t)note;
-        nt[nn].accent = (uint8_t)(l->st[pos].fl & BLF_ACC ? 1u : 0u);
+        nt[nn].accent = (uint8_t)(l->st[pos].fl & BLF_ACC || bl_fx & 2u ? 1u : 0u);
         nt[nn].slide = (uint8_t)(l->st[pos].fl & BLF_SLD && l->st[nx].note ? 1u : 0u);   /* (into a rest: none) */
         nt[nn].rsv = 0u;
         nt[nn].gate = l->st[pos].fl & BLF_SLD ? brk_step_len_samples()   /* (a slide into a rest: the whole step) */
                                               : brk_step_len_samples() * 11u / 20u;
+        if (bl_non < 8u)
+            bl_on[bl_non++] = off[k];
+        nn++;
+    }
+    while (r < nr && nn < 16u && bl_last && !bl_live_held && playing) {   /* (the rolls' hits after the steps) */
+        at[nn] = rh[r++];
+        nt[nn].note = bl_last;
+        nt[nn].accent = 1u;
+        nt[nn].slide = nt[nn].rsv = 0u;
+        nt[nn].gate = brk_step_len_samples() / 3u;
         nn++;
     }
     live_was = bl_live_held;

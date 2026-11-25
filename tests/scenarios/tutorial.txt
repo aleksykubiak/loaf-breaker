@@ -2,8 +2,8 @@
 # FLEXOR; 0.244 the OVERLAY page on ARP: two; 0.246 the ARP key's step gone), each done as it says, then the next: at once (nothing to hear: HOME, EDIT, SHAPE, SELECT, SEQ, FX, SAVE), or
 # 5 s later. HOME (PERFORM); PLAY, four slices, ALGORITHM (another break); HOME's tabs (0.9.2; 0.9.56: GENERATOR, PERFORM, HOME held twice); a black key, ARP (the OVERLAY page), two of its effects; EDIT, K1 twice
 # (the built-in kicks), K2 (DISTO), EDIT (SHAPE), K3 (a longer tail), PRESETS (KICK 2); SELECT (the SNARE), K1 (its
-# preset), K2 (its FX); THE BASS: SEQ, ALGORITHM (another line), three keys, EDIT (its sound); SEL + EDIT (the
-# kick); FX, PRESETS (an effect); SEL + ENV (the drop);
+# THE BASS: SEQ, ALGORITHM (another line), three keys, EDIT (its sound), SELECT to FILTER and K1, PRESETS (another
+# sound); FX, PRESETS (an effect); SEL + ENV (the drop);
 # SAVE; the last read, then finished (254).
 #   app/build/host/loaf-breaker_host tests/scenarios/tutorial.txt app/build/scenarios
 wait 4200
@@ -102,86 +102,29 @@ tap EDIT
 wait 300
 expect page 15
 expect tut 16
-press SEL
-tap EDIT
-release SEL
-wait 300
+turn SELECT 1 10
+wait 100
+turn K1 -6 10
+wait 5400
 expect tut 17
-expect kpage 4
-wait 1500
-shot tu_8.png
-tap PLAY
-wait 300
-expect playing 0
-expect tut 18
-tapkey w0
-wait 150
-tapkey w1
-wait 150
-tapkey w2
-wait 150
-tapkey w3
-wait 5400
-expect tut 19
-turn K1 1 80
-wait 200
-expect tut 19
-tapkey w0
-wait 5400
-expect tut 20
-wait 1500
-shot tu_kpre.png
-turn K2 5 60
-wait 200
-tapkey w0
-wait 5400
-expect tut 21
-tap EDIT
-wait 300
-expect keasy 1
-expect tut 22
-turn K3 3 60
-wait 200
-tapkey w0
-wait 5400
-expect tut 23
 turn PRESET 1 80
-wait 200
-tapkey w0
 wait 5400
-expect tut 24
-turn SELECT 1 80
-wait 400
-expect page 7
-expect tut 25
-turn K1 1 80
-wait 200
-tapkey w1
-wait 5400
-expect tut 26
-turn K2 1 80
-wait 200
-tapkey w1
-wait 5400
-expect tut 27
-wait 1500
-shot tu_14.png
-tap PLAY
-wait 300
+expect tut 18
+shot tu_8.png
 tap FX
 wait 300
-expect tut 28
+expect tut 19
 turn PRESET 1 80
 wait 5400
-expect tut 29
+expect tut 20
 press SEL
 tap ENV
 release SEL
 wait 12000
-expect tut 30
+expect tut 21
 tap SAVE
 wait 300
-expect tut 31
+expect tut 22
 wait 1500
 shot tu_16.png
 wait 6000

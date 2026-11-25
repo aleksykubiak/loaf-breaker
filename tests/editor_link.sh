@@ -1,10 +1,9 @@
 #!/bin/sh
 # SPDX-License-Identifier: MPL-2.0
 # The sound editor's link (LOAF BREAKER 0.9.43, the site's editor/ page; ui/main.c ed_sysex) end to end in the host
-# simulator: ED_INFO's sections and parts; a kick part, a drum page and the kick EQ read and turned (their texts change,
-# the FM-1's screen stays where it was); FX1's effect and a knob of it; the kick's wave; KICK n; the Studio's ED_X (status, pages,
-# a track written, the patterns, RGB, transport, the live scope); the sequencer (ED_SEQ,
-# ED_STEP): a kick step, a snare step's HITS, the hat's LENGTH, a break step's SLICE, a FILL undone.
+# simulator: the Studio's ED_X (status, pages, a track written, the patterns, RGB, transport, the live scope). BABSZTYL:
+# the sound editor's own commands (7-12: ED_INFO, the kick's and the drums' parts, their sequencer) gone with the
+# drums, unanswered, the screen where it was.
 # Needs ./build.sh --host first.
 #   tests/editor_link.sh
 set -e
@@ -17,44 +16,9 @@ echo "wait 4200"
 echo "sysex_log $PWD/$O/out.syx"
 echo "sysex_out"
 echo "expect page 0"
-fr 7 ""                                   # ED_INFO
+fr 7 ""                                   # ED_INFO: gone with the drums (BABSZTYL): no answer
 echo "wait 50"
-fr 8 "0, 1, 0, 0"                          # the kick's SUB part, read
-echo "wait 50"
-fr 8 "0, 1, 0, 6"                          # its LEVEL, 6 clicks right
-echo "wait 50"
-fr 8 "1, 0, 1, 0"                          # the snare's SOUND page, read
-echo "wait 50"
-fr 8 "1, 0, 1, 250"                        # its TUNE, 6 clicks left
-echo "wait 50"
-fr 8 "0, 11, 0, 4"                         # the kick EQ (EQ B), LOW 4 clicks right
-echo "wait 50"
-fr 8 "0, 13, 0, 0"                         # FX1, read
-echo "wait 50"
-fr 8 "0, 13, 4, 2"                         # FX1: PRESETS, the effect two on
-echo "wait 50"
-fr 8 "0, 13, 0, 5, 0"                      # FX1: its K1 five clicks right, MAIN
-echo "wait 50"
-fr 10 "244, 1"                             # the kick's wave over 500 ms
-echo "wait 50"
-echo "expect page 0"
-fr 9 "1, 4"                                # KICK 5
-echo "wait 100"
-echo "expect kslot 4"
-echo "expect page 0"
-fr 11 ""                                  # ED_SEQ: the pattern
-echo "wait 50"
-fr 12 "1, 0, 1, 0, 0"                      # the kick's step 2 on / off
-echo "wait 50"
-fr 12 "2, 1, 4, 1, 1"                      # the snare's step 5: HITS one more
-echo "wait 50"
-fr 12 "3, 2, 0, 3, 1"                      # the hat's lane: LENGTH longer
-echo "wait 50"
-fr 12 "4, 0, 3, 0, 2"                      # the break's step 4: SLICE two on
-echo "wait 50"
-fr 12 "3, 3, 0, 0, 3"                      # the clap's lane: FILL, three more hits
-echo "wait 50"
-fr 12 "6, 0, 0, 0, 0"                      # SEL + SAVE's undo: the FILL
+fr 12 "1, 0, 1, 0, 0"                      # ED_STEP: the same
 echo "wait 50"
 fr 13 "1, 0, 0, 0, 0, 0"                   # ED_X STATUS
 echo "wait 50"
@@ -99,42 +63,8 @@ for f in raw.split(b"\xf0")[1:]:
         rep.append((f[3] & 15, f[4], unpack(f[5:])))
 def knobs(d):
     return [(d[2 + 29 * i:14 + 29 * i].rstrip(b"\0").decode(), d[14 + 29 * i:30 + 29 * i].rstrip(b"\0").decode(), d[30 + 29 * i]) for i in range(4)]
-info = rep[0][2]
-assert rep[0][0] == 7 and info[0] == 1, "ED_INFO"
-k, secs = 4, []
-for s in range(info[3]):
-    name = info[k:k + 8].rstrip(b"\0").decode(); n = info[k + 8]; k += 9
-    parts = []
-    for j in range(n):
-        parts.append((info[k], info[k + 1:k + 13].rstrip(b"\0").decode(), info[k + 13])); k += 14
-    secs.append((name, parts))
-print("editor_link: sections " + ", ".join(f"{n} ({len(p)})" for n, p in secs))
-sub0, sub1, sn0, sn1, eq, fx0, fx1, fx2, wave = rep[1:10]
-a, b = knobs(sub0[2]), knobs(sub1[2])
-assert a[0][0] == "LEVEL" and a[0][1] != b[0][1] and b[0][2] > a[0][2], f"kick SUB LEVEL {a[0]} -> {b[0]}"
-c, d = knobs(sn0[2]), knobs(sn1[2])
-assert c[1][0] == "TUNE" and c[1][1] != d[1][1], f"snare TUNE {c[1]} -> {d[1]}"
-e = knobs(eq[2])
-assert e[0][0] == "LOW" and e[0][1] != "0 DB", f"kick EQ LOW {e[0]}"
-def fx(r):
-    d = r[2]; k = 2 + 4 * 29
-    return knobs(d), d[k:k + 12].rstrip(b"\0").decode(), d[k + 12], d[k + 14]
-f0, f1, f2 = fx(fx0), fx(fx1), fx(fx2)
-assert fx0[1] == 0 and f1[1] != f0[1] and f1[2] == 1 and f1[3] >= 1, f"FX1's effect {f0[1:]} -> {f1[1:]}"
-assert f2[0][0][0] and f2[0][0][1] != f1[0][0][1], f"FX1's K1 {f1[0][0]} -> {f2[0][0]}"
-assert wave[0] == 10 and len(wave[2]) == 240 and max(abs((v ^ 0x80) - 0x80) for v in wave[2]) > 20, "the kick's wave"
-def sq(d):
-    return dict(pat=d[1], bars=list(d[7:11]), mask=[[d[18 + 8 * r + 2 * c] | d[19 + 8 * r + 2 * c] << 8 for c in range(4)] for r in range(4)],
-                sb=list(d[50:210]), brk=[tuple(d[274 + 3 * i:277 + 3 * i]) for i in range(32)], n=len(d))
-s0, s1, s2, s3, s4, s5, s6 = (sq(r[2]) for r in rep[11:18])
-assert all(r[0] == 11 for r in rep[11:18]) and s0["n"] == 370, f"ED_SEQ {s0['n']}"
-assert (s1["mask"][0][0] ^ s0["mask"][0][0]) == 2, "the kick's step 2"
-assert (s2["sb"][64 + 4] & 3) == (s1["sb"][64 + 4] & 3) + 1, "the snare's step 5 HITS"
-assert s3["bars"][2] > s2["bars"][2], f"the hat's LENGTH {s2['bars']} -> {s3['bars']}"
-assert s4["brk"][3][0] == s3["brk"][3][0] + 2, f"the break's step 4 {s3['brk'][3]} -> {s4['brk'][3]}"
-assert bin(s5["mask"][3][0]).count("1") > bin(s4["mask"][3][0]).count("1") and s6["mask"][3][0] == s4["mask"][3][0], "FILL, undone"
-print(f"editor_link: the sequencer: a kick step, a snare step's HITS, the hat {16 * s2['bars'][2]} -> {16 * s3['bars'][2]} steps, a break step's slice, the clap's FILL undone")
-x = rep[18:]
+assert not any(r[0] in (7, 8, 9, 10, 11, 12) for r in rep), "the sound editor's answers (gone with the drums)"
+x = rep
 assert all(r[0] == 13 for r in x) and len(x) == 11, f"ED_X {[(r[0], len(r[2])) for r in x]}"
 st, mx, fxs, rst, trk, bnk, rgb, names, tempo, play, live = x
 def s12(d, a, n=12):
@@ -152,5 +82,5 @@ assert n >= 1 and s12(names[2], 2), "the breaks' names"
 assert (tempo[2][3] | tempo[2][4] << 8) == 1660, "the tempo"
 assert play[2][0] == 1 and live[2][2] == 1 and live[2][31] > 0, f"PLAY, the live scope ({live[2][31]} columns)"
 print(f"editor_link: the Studio: STATUS, MIX MASTER, FX slot 2 {s12(fxs[2], 120)}, RESET refused, TRACK 2 written, the patterns, the break's RGB ({rgb[2][963]} slices), {n} breaks, 166 BPM, PLAY, {live[2][31]} live columns")
-print(f"editor_link: kick SUB LEVEL {a[0][1]} -> {b[0][1]}, snare TUNE {c[1][1]} -> {d[1][1]}, kick EQ LOW {e[0][1]}; FX1 {f0[1]} -> {f1[1]}, its {f2[0][0][0]} {f1[0][0][1]} -> {f2[0][0][1]}; the wave; KICK 5; the screen kept")
+print("editor_link: the sound editor's commands (7-12) unanswered: gone with the drums; the screen kept")
 P

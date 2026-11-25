@@ -1,13 +1,11 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /* The BASS's tests (app/dsp/bass.c), and a demo: an acid line over a sequenced kit (the kick, the snare, the hat,
- * the clap), every bass preset in turn. tests/engine/run_bass.sh [OUTDIR] */
+ * every bass preset in turn. tests/engine/run_bass.sh [OUTDIR] */
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include "bass.h"
 #include "brk.h"
-#include "kick.h"
-#include "perc.h"
 
 static int fails, checks;
 #define CHECK(c, ...) do { checks++; if (!(c)) { fails++; printf("FAIL %s:%d ", __FILE__, __LINE__); \
@@ -152,36 +150,25 @@ static void test_slide(void)
     CHECK(dip > 0.05f, "the slide's joint drops to %.3f", (double)dip);
 }
 
-/* the demo: 8 bars at 140 BPM, a 16-step acid line over the kit, a preset a bar */
+/* the demo: 8 bars at 140 BPM, a 16-step acid line, a preset a bar (the bass alone: the drums are the break's) */
 static void demo(const char *dir)
 {
     static const int8_t LINE[16] = {0, 0, 12, 0, -1, 0, 15, 0, 0, 10, 0, 12, -1, 3, 0, 7};   /* -1: rest */
     static const uint8_t ACC[16] = {1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1};
     static const uint8_t SLD[16] = {0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0};
-    static const uint16_t KICK = 0x1111u, SNARE = 0x1010u, HAT = 0xEEEEu, CLAP = 0x1000u;
     static const uint8_t ORDER[8] = {0u, 0u, 1u, 2u, 3u, 4u, 5u, 1u};
     char path[600];
     bass_t b;
-    kick_t k;
-    perc_t pc;
-    float kb[BLK], pb[BLK], bb[BLK];
+    float bb[BLK];
     uint32_t spstep = BRK_SR * 60u / 140u / 4u, total = spstep * 16u * 8u, t, i;
     bass_init();
-    kick_init();
-    perc_init();
     bass_defaults(&b);
-    kick_defaults(&k);
-    kick_preset(&k, 0u);                 /* the 909 */
-    perc_defaults(&pc);
-    kick_set(&k);
-    perc_set(&pc);
     for (t = 0; t < total; t += BLK) {
         uint32_t step0 = t / spstep, off = step0 * spstep;
-        uint16_t ka[2], ba[2], pa[4];
-        uint8_t who[4];
+        uint16_t ba[2];
         bass_note_t nt[2];
-        uint32_t nk = 0u, nb = 0u, np = 0u;
-        if (off < t) {                   /* the next step's start, if it falls in this block */
+        uint32_t nb = 0u;
+        if (off < t) {
             off += spstep;
             step0++;
         }
@@ -191,8 +178,6 @@ static void demo(const char *dir)
                 bass_preset(&b, ORDER[bar % 8u]);
                 bass_set(&b);
             }
-            if (KICK >> s & 1u)
-                ka[nk++] = (uint16_t)o;
             if (LINE[s] >= 0) {
                 nt[nb].note = (uint8_t)(33 + LINE[s]);
                 nt[nb].accent = ACC[s];
@@ -201,15 +186,10 @@ static void demo(const char *dir)
                 nt[nb].gate = spstep / 2u;
                 ba[nb++] = (uint16_t)o;
             }
-            if (SNARE >> s & 1u) { pa[np] = (uint16_t)o; who[np++] = PV_SNARE; }
-            if (HAT >> s & 1u) { pa[np] = (uint16_t)o; who[np++] = PV_HAT; }
-            if (CLAP >> s & 1u && bar & 1u) { pa[np] = (uint16_t)o; who[np++] = PV_CLAP; }
         }
-        kick_render(kb, BLK, ka, nk);
-        perc_render(pb, BLK, pa, who, np);
         bass_render(bb, BLK, ba, nt, nb);
         for (i = 0; i < BLK && t + i < total; i++)
-            buf[t + i] = 0.45f * kb[i] + 0.4f * pb[i] + 0.55f * bb[i];
+            buf[t + i] = 0.8f * bb[i];
     }
     snprintf(path, sizeof path, "%s/bass_demo.wav", dir);
     wav(path, buf, total);

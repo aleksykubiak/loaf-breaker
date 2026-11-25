@@ -379,7 +379,7 @@ static void draw_ovl(void)
             cv_text(x + 4, y + 1, &FONT_XS, OVL_NAME[i], lit ? C_BLACK : sel ? C_HI : C_GRAY);
             cv_text(x + 54 - text_w(&FONT_T, t), y + 12, &FONT_T, t, lit ? C_BLACK : C_DIM);   /* its key */
             if (arp_route(i))            /* (0.9.50: its THRU, BREAK or KICK alone) */
-                cv_text(x + 4, y + 12, &FONT_T, arp_route(i) == 1u ? "BREAK" : "KICK", lit ? C_BLACK : C_AMB);
+                cv_text(x + 4, y + 12, &FONT_T, arp_route(i) == 1u ? "BREAK" : "BASS", lit ? C_BLACK : C_AMB);
             cv_rect(x + 4, y + 18, 34, 2, lit ? C_BLOCK_HI : C_LINE);                         /* its amount */
             cv_rect(x + 4, y + 18, (int32_t)set.ovl_amt[i] * 34 / 100, 2, lit ? C_BLACK : lat ? C_AMB : C_GRAY);
         }
