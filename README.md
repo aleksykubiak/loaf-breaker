@@ -27,6 +27,13 @@
 > or their look, and some sections will be redesigned. The aim is a machine that is quick to play live, easy to find
 > your way in, and yours to shape: if you are here, you are early, and the best is still to come.
 
+> **This branch (`bass-drum`): SEQ and EDIT are a bass's.** A monophonic bass (saw / square + sub, a four-pole
+> resonant filter, ACCENT, SLIDE, DRIVE) plays eight two-bar lines on the break's steps (its tempo and swing).
+> **SEQ** records and edits the lines (the 27 keys a keyboard; REC live at the nearest 16th or step by step; SEQ held
+> + white key 1–8 changes lines at the next bar, from any page); **EDIT** shapes the selected line's sound (OSC,
+> FILTER, ENV, six presets). The kick, the drums and the break's sounds moved to **SEL + EDIT**. See the manual's
+> "The BASS" section. Code: `app/dsp/bass.c` (the engine), `app/bline.c` (the lines), `app/ui/bass.c` (the pages).
+
 LOAF BREAKER is FLEXOR's firmware for the [M-VAVE FM-1](https://www.m-vave.com/), built on
 **[CHOPPAH](https://github.com/profikid/fm1-break-choppah)**, Laurens Profittlich's Amen chopper. It keeps CHOPPAH's
 heart (a break cut into sixteen slices on the white keys, effect pads on the black keys, a generator, a master effects

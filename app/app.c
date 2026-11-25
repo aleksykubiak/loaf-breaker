@@ -15,6 +15,7 @@
 #include "brk_bank.h"
 #include "brk_math.h"
 #include "brk_synth.h"
+#include "bass.h"                    /* the BASS (its lines: bline.c) */
 #include "kick.h"
 #include "ovl.h"
 #include "perc.h"
@@ -1191,6 +1192,7 @@ typedef struct {
 } km2_t;
 _Static_assert(sizeof(km2_t) <= 3840u, "a store object holds 3840 bytes");
 static km2_t km2 PLAT_POOL;
+#include "bline.c"                    /* the BASS LINES: SEQ, EDIT (their object: KICK 11..20's) */
 static kick_t *kmem_at(uint32_t n)
 {
     n %= KICK_MEMS;
@@ -1464,7 +1466,7 @@ static int store_all(void)               /* SAVE: the settings, the patterns (th
     return plat_store_save(OBJ_SETTINGS, &set, sizeof set) == 0 && plat_store_save(OBJ_PAT, &pats, sizeof pats) == 0 &&
            plat_store_save(OBJ_STEP, &steps, sizeof steps) == 0 && grp_save() &&
            plat_store_save(OBJ_KLAB, &klab, sizeof klab) == 0 &&
-           plat_store_save(OBJ_KMEM2, &km2, sizeof km2) == 0 &&   /* (KICK 11..20, 0.9.2) */
+           bl_save() &&                  /* (the BASS LINES, in KICK 11..20's object: bline.c) */
            (kfx_put(set.kslot), plat_store_save(OBJ_KFXM, &kfxm, sizeof kfxm) == 0) &&   /* (each kick's FX, 0.9.26) */
            (wk_store(), kx2_save() == 0);   /* (each kick's TOK and TAIL GATE, 0.9.45; each
                                           * break's white keys, 0.9.71) */
@@ -1890,7 +1892,7 @@ static uint8_t wave_b[240][4] PLAT_POOL; /* (0.9.70, FLEXOR: the strip's colours
 static uint8_t blk_px[BLK_N][BLK_W];     /* each slice's waveform, 0..19 */
 static uint8_t blk_n;                    /* blocks with a slice behind them */
 static volatile uint8_t muted;
-static volatile float meter_brk, meter_kick, meter_perc;   /* the MIXER's channels: the break, the kick, the snare
+static volatile float meter_brk, meter_kick, meter_perc, meter_bass;   /* the MIXER's channels: the break, the kick, the snare
                                                            * and hat, before the chain */
 static volatile float meter_l, meter_r;  /* the output's peaks as it leaves (after MASTER: 1 = full scale), falling
                                           * ~20 dB a second: the render writes, the header's meter reads */
@@ -2299,6 +2301,7 @@ void app_init(void)
     brk_fx_init();
     brk_fx_delay_buffer(dub_line, CH_DUB_LEN);
     kick_init();
+    bass_init();
     perc_init();
     ovl_init(ovl_line);
     breaks_count();                      /* the bank's (breaks/breaks.txt), then the player's own (0.9.32) */
@@ -2389,8 +2392,8 @@ void app_init(void)
     {                                    /* (LOAF BREAKER, 0.9.2: KICK 11..20; a save before them: as they begin; the
                                           * KICK LAB's line above may have cleared their LAB: theirs read after) */
         km2_lab_clear();
-        if (plat_store_load(OBJ_KMEM2, &km2, sizeof km2) != (int)sizeof km2 || km2.magic != KM2_MAGIC)
-            km2_defaults();
+        km2_defaults();                  /* (KICK 11..20: their object is the BASS LINES' now, bline.c) */
+        bl_load();
         if (plat_store_load(OBJ_KFXM, &kfxm, sizeof kfxm) != (int)sizeof kfxm || kfxm.magic != KFXM_MAGIC)
             kfx_all();                   /* (0.9.26: each kick's FX section; before, the one they shared) */
         if (fresh)
@@ -3004,6 +3007,14 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             }
             brk_fx_kick_eq(kick, m);    /* LOAF BREAKER: HOME's KICK EQ */
             brk_fx_kick(kick, m);        /* and its KICK FX */
+            {                            /* the BASS LINES (bline.c): on the same steps, into the kick's bus (after its
+                                          * EQ and FX: the bass its own sound) */
+                float *bassb = kl;       /* (kl: free until the overlays below fill it from the kick: no RAM spent) */
+                bl_render(bassb, m, off, idx, ne, st.playing);
+                for (i = 0; i < m; i++)
+                    kick[i] += bassb[i];
+                meter_bass = meter(bassb, m, meter_bass);
+            }
             perc_render(perc, m, pa, who, np);
             if (set.duck) {              /* LOAF BREAKER (crossbreed): DUCK: the break (and its throws; DRUMS: the
                                           * other drums too) pushed down at each kick, in its attack, back up over its
@@ -3275,6 +3286,7 @@ void app_panic(void)
 #include "ui/global.c"
 #include "ui/ovl.c"
 #include "ui/seq.c"
+#include "ui/bass.c"                  /* the BASS: SEQ and EDIT */
 #include "ui/kick.c"
 #include "ui/perc.c"
 #include "ui/mixer.c"

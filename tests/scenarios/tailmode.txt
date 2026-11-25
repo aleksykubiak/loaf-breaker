@@ -3,7 +3,9 @@
 # SPLIT AT 30 .. 600 ms, DIRT RISE 50 .. 2000 ms, half way when the mode is picked; nothing for CLASSIC and CLEAN.
 #   app/build/host/loaf-breaker_host tests/scenarios/tailmode.txt app/build/scenarios
 wait 4200
+press SEL
 tap EDIT
+release SEL
 wait 300
 turn SELECT 1 10
 wait 150

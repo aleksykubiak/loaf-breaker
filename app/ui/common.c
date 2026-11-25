@@ -309,7 +309,7 @@ static void skin_apply(uint32_t s)
 #undef C_WHITE                           /* (the app's white is the skin's: put back after the UI, app.c's end) */
 #define C_WHITE skin_white
 
-enum { PG_HOME, PG_GEN, PG_FX, PG_GLOBAL, PG_KICK, PG_MIX, PG_SEQ, PG_PERC, PG_TRACK, PG_OVL, PG_KEQ, PG_HSET, PG_SPLIT, PG_CHAOS, NPAGES };   /* (PG_SPLIT: HOME's third part, 0.9.71) */
+enum { PG_HOME, PG_GEN, PG_FX, PG_GLOBAL, PG_KICK, PG_MIX, PG_SEQ, PG_PERC, PG_TRACK, PG_OVL, PG_KEQ, PG_HSET, PG_SPLIT, PG_CHAOS, PG_BSEQ, PG_BEDIT, NPAGES };   /* (PG_BSEQ, PG_BEDIT: the BASS's SEQ and EDIT, ui/bass.c) */   /* (PG_SPLIT: HOME's third part, 0.9.71) */
 #define HOME_PG(p) ((p) == PG_HOME || (p) == PG_GEN || (p) == PG_SPLIT || (p) == PG_CHAOS)   /* (0.9.75: CHAOS) */   /* (HOME's parts: PERFORM, GENERATOR, SPLIT) */
 /* (LOAF BREAKER, 0.9.2, FLEXOR: PG_HSET, HOME's SETTINGS after PERFORM and GENERATOR) */
                                          /* (LOAF BREAKER: PG_KEQ, HOME's third part, the KICK EQ; PG_TRACK, ENV's
@@ -468,6 +468,7 @@ static struct {
 static void page_say(void);              /* the header: the page's button and part, as its tabs (main.c) */
 #define SEQ_BRK (ui.seq_brk && !set.novice)
 static int slices_page(void) { return (ui.page != PG_SEQ || SEQ_BRK) && ui.page != PG_TRACK && ui.page != PG_OVL &&
+                                         ui.page != PG_BSEQ && ui.page != PG_BEDIT &&   /* (the BASS's: a keyboard) */
                                          !(ui.page == PG_GLOBAL && ui.gpage == 3u); }   /* (GLO EFFECTS: keys 1-7) */   /* (ARP: overlays) */
 enum { RG_HEAD = 1, RG_WAVE = 2, RG_BLOCKS = 4, RG_FOOT = 8, RG_ALL = 15, RG_FX = 16 };
 

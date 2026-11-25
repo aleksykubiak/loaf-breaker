@@ -256,6 +256,7 @@ static void reset_all(void)
 {
     uint8_t ble_was_off = set.ble_off;
     settings_defaults();
+    bl_defaults();                       /* (the BASS LINES as a new FM-1 has them) */
     wk_fill();                           /* (0.9.71: every break's white keys as they start) */
     memset(kx2.sp, 0, sizeof kx2.sp);   /* (0.9.71: no split on any break) */
     memset(kx2.chaos, 0, sizeof kx2.chaos);   /* (0.9.75: CHAOS off) */
@@ -331,9 +332,8 @@ static void slices_let_go(uint32_t keys)
             brk_key((int)i, 0);
 }
 
-static uint32_t seq_t;                   /* LOAF BREAKER: SEQ pressed: when, and waiting (1, 3: and the next lane)
-                                          * for its release */
-static uint8_t seq_wait;
+static uint8_t seq_wait;                 /* (LOAF BREAKER's SEQ, waiting for its release: never now, SEQ is the
+                                          * BASS's, ui/bass.c) */
 static uint32_t fxl_t;                   /* LOAF BREAKER: FX pressed: when (held 0.7 s: the FX fader) */
 static uint32_t clr_t;                   /* LOAF BREAKER: SEQ held: the clear asked, waiting for SEQ again (3 s) */
 static uint8_t clr_arm;
@@ -436,6 +436,14 @@ static void input(void)
         app_say("TUTORIAL", "FOLLOW THE STEP");
     }
     raw = keys;
+    bs_keys_any(kdn, btn);               /* (SEQ held + white key 1-8, any page: the line) */
+    if (bs_page()) {                     /* the BASS's pages: the keys a keyboard (no slice, no pad) */
+        bs_keys(keys, kdn, kup, btn);
+        kdn &= ~BS_KEYS;
+    } else if (btn & 1u << B_SEQ) {      /* (SEQ held elsewhere: white keys 1-8 the lines, not slices) */
+        for (i = 0; i < 8u; i++)
+            kdn &= ~(1u << WK[i]);
+    }
     for (i = 0; i < 16u; i++)            /* (0.9.56, FLEXOR: SEL + a white key: the key as without SEL, and SEL let go
                                           * after it no click, no card; SEL WHITE's shortcuts gone in 0.9.71, FLEXOR) */
         if (kdn & 1u << WK[i] && btn & 1u << B_SEL && !drum_hear_key(i))
@@ -819,9 +827,10 @@ static void input(void)
             else if (ui.page == PG_GLOBAL && ui.gpage == GP_BREAK) {
                 ui.einst = 0u;
                 kick_open();
-            } else {
-                ui.einst = (uint8_t)(ui.einst >= DR_SNARE && ui.einst < NDRUMS ? ui.einst : DR_SNARE);
-                edit_open();
+            } else {                     /* (from anywhere else, the BASS's EDIT too: the KICK menu first; EDIT alone
+                                          * is the BASS's sound) */
+                ui.einst = 0u;
+                kick_open();
             }
         } else if (ui.page == PG_GLOBAL && ui.gpage == GP_BREAK)
             app_say("BREAK", "ONE PART");    /* (the break's page: one part; SEL + EDIT the kick) */
@@ -833,9 +842,11 @@ static void input(void)
                                           * "PRESS EDIT: THE KICK", from SEQ's snare lane: the kick) */
             ui.einst = (uint8_t)sl_drum(ui.seq_lane);   /* (from SEQ, the drum of the lane shown) */
             edit_open();
-        } else {
-            ui.einst = 0u;
-            kick_open();
+        } else if (ui.page == PG_BEDIT)
+            home_back();                 /* (the BASS's EDIT again: HOME) */
+        else {                           /* EDIT: the BASS, the line selected's sound (the KICK menu: SEL + EDIT) */
+            slices_let_go(keys);
+            bs_open(PG_BEDIT);
         }
         ui.redraw |= RG_FOOT | RG_BLOCKS | RG_WAVE;
     }
@@ -926,39 +937,38 @@ static void input(void)
         clr_arm = 0u;
         app_say("CLEAR", "CANCELLED");
     }
-    if (bdn & 1u << B_SEQ && clr_arm) {  /* LOAF BREAKER: SEQ again: the clear confirmed (SEL + SAVE takes it back) */
-        clr_arm = 0u;
-        seq_clear(0);
-    } else if (bdn & 1u << B_SEQ && btn & 1u << B_SEL)   /* LOAF BREAKER: SEL + SEQ: copy the pattern; on another:
-                                          * paste */
-        pat_copy_paste();
-    else if (bdn & 1u << B_SEQ) {        /* SEQ: the pattern's steps and lanes; again, the next lane (LOAF BREAKER:
-                                          * at its release; held 0.7 s, anywhere: the whole pattern cleared) */
-        seq_t = now;
-        seq_wait = (uint8_t)(ui.page == PG_SEQ ? 3u : 1u);
-        if (ui.page != PG_SEQ) {
+    /* SEQ (the BASS, ui/bass.c): the lines; again (let go), HOME. Held: white keys 1-8 pick a line, K1 turns it; let go
+     * after that, back on the page it came from. SEL + SEQ: copy the line, on another paste. (The pattern's steps and
+     * lanes, SEQ's before, are gone from the panel: the patterns play as saved, PRESETS picks them.) */
+    if (bdn & 1u << B_SEQ && btn & 1u << B_SEL) {
+        bs_copy_paste();
+        ui.tap_combo = 1u;               /* (no SEL click) */
+    } else if (bdn & 1u << B_SEQ) {
+        bs.seq_down = 1u;
+        bs.seq_used = 0u;
+        bs.seq_back = (uint8_t)(ui.page == PG_BSEQ);
+        bs.seq_from = ui.page;
+        if (ui.page != PG_BSEQ) {
             slices_let_go(keys);
-            ui.seq_lane = SL_KICK;       /* LOAF BREAKER: back on SEQ from another page, always K1 */
-            ui.seq_brk = 0u;
-            ui.page = PG_SEQ;
-            ui.redraw |= RG_FOOT | RG_BLOCKS;
-            page_say();
+            bs_open(PG_BSEQ);
         }
     }
-    if (seq_wait) {
-        if (!(btn & 1u << B_SEQ)) {      /* let go: on SEQ already, HOME (0.9.2, FLEXOR: SELECT the lanes) */
-            if (seq_wait & 2u)
-                home_back();
-            seq_wait = 0u;
-        } else if (now - seq_t >= 700u) {   /* held: the pattern playing, all of it, once SEQ is pressed again */
-            char t[12] = "CLEAR P";
-            seq_wait = 0u;
-            clr_arm = 1u;
-            clr_t = now;
-            int_text((int32_t)pat_cur() + 1, t + 7);
-            text_cat(t, "?");
-            app_say(t, "SEQ AGAIN");
-        }
+    if (bs.seq_down && !(btn & 1u << B_SEQ)) {
+        bs.seq_down = 0u;
+        if (bs.seq_used && !bs.seq_back && bs.seq_from != PG_BSEQ) {   /* (a line picked from another page: back) */
+            ui.page = bs.seq_from;
+            ui.redraw |= RG_HEAD | RG_WAVE | RG_BLOCKS | RG_FOOT;
+            page_say();
+        } else if (bs.seq_back && !bs.seq_used)
+            home_back();
+    }
+    if (bdn & 1u << B_REC && bs_page()) {   /* the BASS's: REC records into the line; SEL + REC clears it */
+        if (btn & 1u << B_SEL) {
+            bs_clear();
+            ui.tap_combo = 1u;
+        } else
+            bs_rec_toggle();
+        bdn &= ~(1u << B_REC);
     }
     if (bdn & 1u << B_REC && btn & 1u << B_SEQ && ui.page == PG_SEQ) {   /* LOAF BREAKER: SEQ held + REC: every drum
                                           * lane cleared, the break kept */
@@ -1118,7 +1128,9 @@ static void input(void)
     }
     /* OCT- / OCT+: pitch in semitones, repeating faster while held; both: back to 0. LOAF BREAKER: REC stopped (step by
      * step), OCT+ a REST (the step kept, the next one), OCT- a step back */
-    if (ui.rec && !playing_now()) {
+    if (bs_page())
+        bs_oct(btn, bdn);                /* (the BASS's: the keys' octave) */
+    else if (ui.rec && !playing_now()) {
         if (bdn & 1u << B_OCTUP)
             rec_move(1);
         if (bdn & 1u << B_OCTDN)
@@ -1196,6 +1208,8 @@ static void input(void)
             ui.redraw |= RG_FOOT;        /* (the foot shows them: SEL held or locked) */
             continue;
         }
+        if (bs_enc(k, d, btn))           /* the BASS's SEQ and EDIT */
+            continue;
         if (k == EN_SELECT && !set.novice && (ui.page == PG_KICK || ui.page == PG_KEQ || IS_KFX())) {
             kick_sect_turn(d);           /* LOAF BREAKER (0.264, FLEXOR): EXPERT's KICK menu, SELECT the tabs at the top
                                           * (its sections), ALGORITHM those at the bottom (its parts); the drums: SEL +
@@ -1487,10 +1501,11 @@ static void leds(void)
     if (st.playing && plat_ms() - ui.kick_t >= 70u)   /* (LOAF BREAKER TEST: PLAY blinks off on each kick) */
         b |= 1u << B_PLAY;
     static const uint8_t PAGE_BTN[NPAGES] = {B_HOME, B_HOME, B_FX, B_GLO, B_EDIT, B_LFO, B_SEQ, B_EDIT, B_ENV, B_ARP,
-                                             B_EDIT, B_GLO, B_HOME, B_HOME};   /* (TEST: KICK EQ under EDIT; 0.9.56 SETTINGS under GLO) */
+                                             B_EDIT, B_GLO, B_HOME, B_HOME, B_SEQ, B_EDIT};   /* (TEST: KICK EQ under EDIT; 0.9.56 SETTINGS under GLO; the BASS's) */
     b |= 1u << (IS_KFX() || (ui.page == PG_GLOBAL && ui.gpage == GP_BREAK) ? B_EDIT : ui.page == PG_GLOBAL &&
                 ui.gpage == GP_FILL ? B_SEQ : PAGE_BTN[ui.page]);   /* (LOAF BREAKER: SOUNDS' BREAK, PATTERN's GROOVE) */
-    if (rec_key_on() ? bkf_lit(rec_fn(), &st) != 0 : ui.rec != 0u)   /* (0.9.58: the REC key lit as its function) */
+    if (bs_page() ? bs.rec && (!playing_now() || (plat_ms() / 200u) & 1u) :   /* (the BASS's REC: blinking, playing) */
+        rec_key_on() ? bkf_lit(rec_fn(), &st) != 0 : ui.rec != 0u)   /* (0.9.58: the REC key lit as its function) */
         b |= 1u << B_REC;
     if (set_dirty)
         b |= 1u << B_SAVE;
@@ -1633,6 +1648,10 @@ static void leds(void)
 static void knob_value(int i, char *t)  /* the page's knob i (0..3), as shown under its name */
 {
     t[0] = 0;
+    if (bs_page()) {                     /* (the BASS's) */
+        bs_value(i, t);
+        return;
+    }
     if (ui.page == PG_OVL) {             /* (LOAF BREAKER, 0.244: the OVERLAY page) */
         ovl_value(i, t);
         return;
@@ -1716,7 +1735,7 @@ static int32_t tab_pad(int32_t x, const char *s, int on, int32_t pad, int32_t ga
 static int32_t tab(int32_t x, const char *s, int on) { return tab_pad(x, s, on, 4, 3); }
 /* the pages' buttons as printed, GLOBAL's parts, SEQ's lanes: for the tabs and the header (page_say) */
 static const char *const BTN[NPAGES] = {"HOME", "HOME", "FX", "GLO", "EDIT", "LFO", "SEQ", "EDIT", "ENV", "ARP",
-                                        "EDIT", "GLO", "HOME", "HOME"};   /* (0.9.56: SETTINGS, SYSTEM's) */
+                                        "EDIT", "GLO", "HOME", "HOME", "SEQ", "EDIT"};   /* (0.9.56: SETTINGS, SYSTEM's) */
 static const char *const GPART[NGPART] = {"MIDI", "PITCH", "SETUP", "SCREEN FX", "SCREEN SET", "RESET",
                                                    "GROOVE", "LIGHTS"};   /* (6: GP_FILL; 7 GP_LIGHTS, 0.9.57) */
 static int32_t tab_glo(int32_t x, uint32_t g, int on)   /* (0.9.57: SYSTEM's seven, narrower so they fit; 0.9.68,
@@ -1727,7 +1746,7 @@ static int32_t tab_glo(int32_t x, uint32_t g, int on)   /* (0.9.57: SYSTEM's sev
 /* LOAF BREAKER (0.201): each button a domain, its name on the screen (the button keeps its print): LIVE (HOME), SOUNDS
  * (EDIT: the kick, the drums, the melody, the break), PATTERN (SEQ), SONG (ENV), MIX (LFO), EFFECTS (FX), SYSTEM (GLO) */
 static const char *const DOM[NPAGES] = {"LIVE", "LIVE", "EFFECTS", "SYSTEM", "SOUNDS", "MIX", "PATTERN", "SOUNDS", "SONG",
-                                        "ARP", "SOUNDS", "SYSTEM", "LIVE", "LIVE"};
+                                        "ARP", "SOUNDS", "SYSTEM", "LIVE", "LIVE", "BASS SEQ", "BASS"};
 static const char *dom_name(void)
 {
     if (IS_KFX() || (ui.page == PG_GLOBAL && ui.gpage == GP_BREAK))
@@ -1756,7 +1775,9 @@ static void draw_tabs(void)
                                           * KICK menu's six sections want the room; its picture says KICK n) */
             : cv_text(4, 1, &FONT_T, lab, C_WHITE) + 6;
     }
-    if (HOME_PG(ui.page)) {              /* HOME: PERFORM, GENERATOR (0.9.56, FLEXOR: SETTINGS in SYSTEM); SPLIT (0.9.71,
+    if (bs_page())                       /* (the BASS's: EDIT its parts, SEQ the lines' state) */
+        bs_tabs(x);
+    else if (HOME_PG(ui.page)) {              /* HOME: PERFORM, GENERATOR (0.9.56, FLEXOR: SETTINGS in SYSTEM); SPLIT (0.9.71,
                                           * EXPERT) */
         x = tab(x, "PERFORM", ui.page == PG_HOME);
         x = tab(x, "GENERATOR", ui.page == PG_GEN);
@@ -1861,6 +1882,8 @@ static void page_say(void)
     case PG_GEN: text_cat(t, "GENERATOR"); break;
     case PG_SPLIT: text_cat(t, "SPLIT"); break;
     case PG_CHAOS: text_cat(t, "CHAOS"); break;
+    case PG_BSEQ:
+    case PG_BEDIT: bs_say(t); break;
     case PG_HSET: text_cat(t, "DISPLAY"); break;
     case PG_KEQ: text_cat(t, ui.keq_part ? "KICK EQ SHAPE" : "KICK EQ BANDS"); break;
     case PG_GLOBAL: text_cat(t, ui.gpage == GP_FILL ? "GROOVE" : ui.gpage == GP_BREAK ? "BREAK" : GPART[ui.gpage % NGPART]); break;
@@ -1960,6 +1983,8 @@ static void knob_arc(int32_t cx, int32_t cy, float v)
 }
 static float foot_norm(int i)            /* the page's knob i, 0..1, or -1 (no gauge) */
 {
+    if (bs_page())
+        return bs_norm(i);
     if (ui.page == PG_FX && !mb_detail(fx_foc()) && !x_detail(fx_foc())) {
         const brk_fxslot_t *sl = fx_sl(fx_foc());
         return sl->type ? (i == 3 ? sl->mix : sl->p[i & 3]) : -1.0f;
@@ -1989,7 +2014,8 @@ static const char *knob_name(int i)
                                               {"LOW", "MID", "HIGH", "MID FREQ"},
                                               {"VIEW", "WAVE TYPE", "WAVE ZOOM", "BREAK TIME"},
                                               {"SPLIT", "BREAK B", "BAR A", "BAR B"},   /* (0.9.71: HOME's SPLIT) */
-                                              {"CHAOS", "MATH", "ROLLS", "SEED"}};   /* (0.9.75: HOME's CHAOS) */
+                                              {"CHAOS", "MATH", "ROLLS", "SEED"},   /* (0.9.75: HOME's CHAOS) */
+                                              {"", "", "", ""}, {"", "", "", ""}};   /* (the BASS's: bs_kname) */
     static const char *const KN_PITCH[4] = {"PITCH", "GRAIN", "SNAP", "LEVEL"};   /* (SOUNDS' BREAK) */
     static const char *const KN_GROOVE[3][4] = {{"FX", "DRUMS", "DUCKS", "ROLL"}, {"COMP", "RATIO", "DUCK", "MAX OUT"},
                                                 {"C ATTACK", "C RELEASE", "D RELEASE", "DUCKS"}};
@@ -2019,7 +2045,9 @@ static const char *knob_name(int i)
         name = "ARP FX";                 /* (0.9.45: BLACK KEYS, an ARP key's own effect) */
     if (ui.page == PG_TRACK && !ui.tpage && !RST_ON && i >= 2 && trk_now()->it[ui.trk_cur % TRK_ITEMS] == TI_DROP)
         name = i == 2 ? "STUTTER" : "GAP KEEPS";   /* (0.9.26: a DROP item's K3, K4) */
-    if (ui.page == PG_FX)            /* the focused slot's effect: its settings, then MIX */
+    if (bs_page())
+        name = bs_kname((int)i);
+    else if (ui.page == PG_FX)            /* the focused slot's effect: its settings, then MIX */
         name = fx_param_name(ui.fx_focus, (int)i);
     else if (ui.page == PG_KICK)
         name = kick_knob_name((int)i);
@@ -2052,7 +2080,9 @@ static void draw_foot(const brk_status_t *st)
     char t[16];
     draw_tabs();
     cv_begin(240, 48, C_BLACK);
-    for (i = 0; i < 11u; i++) {          /* (LOAF BREAKER: each key's function, the layout's) */
+    if (bs_page())                       /* (the BASS's: the black keys are notes) */
+        bs_black_names();
+    for (i = 0; i < 11u && !bs_page(); i++) {   /* (LOAF BREAKER: each key's function, the layout's) */
         uint32_t f = bk_fn_shown(i);
         int on = f == BKF_ARP ? arpk_on(i) : bkf_lit(f, st);
         int32_t x = 2 + (int32_t)i * 21;
@@ -2559,6 +2589,7 @@ void app_frame(void)
             ui.redraw = RG_ALL;
         }
     }
+    bs_poll(now);                        /* (the BASS: a key held recording, the screen) */
     if (ui.aud_t && now - ui.aud_t >= 160u) {   /* (LOAF BREAKER: a drum played on its key: its card lit, then not) */
         ui.aud_t = 0u;
         ui.redraw |= RG_BLOCKS;
@@ -2598,7 +2629,7 @@ void app_frame(void)
     }
     if (!ui.redraw)
         return;
-    if (ui.redraw & RG_WAVE && ui.page != PG_TRACK && ui.page != PG_SEQ && ui.page != PG_GLOBAL &&
+    if (ui.redraw & RG_WAVE && ui.page != PG_TRACK && ui.page != PG_SEQ && ui.page != PG_GLOBAL && !bs_page() &&
         ui.shown != PAD_TAPESTOP &&      /* (0.9.30: VINYL BREAK's platter over it) */
         (ui.page != PG_KICK || ui.kclassic) &&
         (ui.page != PG_PERC || !ui.pbig))   /* (LOAF BREAKER: SEQ is a grid there) */
@@ -2613,7 +2644,9 @@ void app_frame(void)
         ui.fx_drawn = now;
     }
     if (ui.redraw & RG_BLOCKS) {
-        if (ui.page == PG_OVL)
+        if (bs_page())
+            draw_bass();                 /* (the BASS's SEQ and EDIT) */
+        else if (ui.page == PG_OVL)
             draw_ovl();
         else if (ui.page == PG_TRACK || RST_ON)
             draw_track();
@@ -3825,6 +3858,8 @@ int app_host_cmd(const char *cmd, const char *a, const char *b, const char *c, c
 /* the scenarios' checks of the UI's state (expect WHAT VALUE) */
 int app_expect(const char *what, int *got)
 {
+    if (bs_expect(what, got))            /* (the BASS's) */
+        return 1;
     static const char *const W[] = {"page", "gpage", "kpage", "seq_lane", "fx_focus", "fx_on", "lane_kick",
                                     "lane_hat", "pattern", "brk", "brk_next", "help", "drums_chain", "lobo",
                                     "ovl_on", "ovl_last", "ovl_latch", "roll_pitch_x10", "demo", "fx_page",

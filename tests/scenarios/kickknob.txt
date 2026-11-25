@@ -2,7 +2,9 @@
 # PRESETS once) has its own (CLEAN SUB off, K3 T+ SCREECH), and KICK 4 again its CLEAN SUB and DECAY back. Saved with the steps.
 #   app/build/host/loaf-breaker_host tests/scenarios/kickknob.txt app/build/scenarios
 wait 4200
+press SEL
 tap EDIT
+release SEL
 wait 300
 # (0.253: the KICK menu opens on ATTACK's PRESET; 0.264: SELECT, BODY)
 turn SELECT 1 10

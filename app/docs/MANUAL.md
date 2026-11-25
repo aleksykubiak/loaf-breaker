@@ -91,6 +91,35 @@ SCREAM and DISTO +, SYNTH +, CLEAN MORPH, each knob's settings…). The rest of 
 
 ---
 
+## The BASS: SEQ and EDIT
+
+**SEQ and EDIT are the bass's.** A monophonic bass (a saw and a square, a sub an octave down, a four-pole resonant
+filter, ACCENT, SLIDE, DRIVE) plays **eight lines of two bars**, on the break's own steps: the tempo and the swing
+(PATTERN › GROOVE, **SEL + ARP**) are theirs, so a line shuffles with the break. It plays in the kick's bus, after the
+kick's EQ and FX, so DUCK, X2, X4, TRI, KIL and the kick rolls still act on the kick alone.
+
+- **SEQ: the lines.** The eight at the top (lit: selected; the amber bar: the one heard; dim: empty), the selected
+  line's two bars below as a roll (white: an ACCENT; an amber line: a SLIDE; a long bar: a tied note).
+  - **ALGORITHM** picks the line: playing, it comes in at the next bar from its first step; stopped, at once.
+    **SEQ held + white key 1–8** does the same from any page (back on that page when SEQ is let go): change lines
+    live, bar by bar.
+  - **The 27 keys are a keyboard**, F to G; **OCT− / OCT+** its octave (both: back to F1). A key held plays the bass
+    at once (the line quiet under it).
+  - **REC** (blinking while playing) records the keys into the line at the nearest 16th, over what is there; a key
+    held goes on into the steps it plays over (a long note). **Stopped**, each key writes the step selected and
+    moves to the next. **SEL + REC** clears the line.
+  - **SELECT** the step, **K1** its note (down past the lowest: a rest), **K2** NORMAL, ACCENT, SLIDE or both, **K3**
+    the line's TRANSPOSE (±12), **K4** its LEVEL. **SEQ held + K1** turns the line a step round. **SEL + SEQ** copies
+    the line; on another, SEL + SEQ pastes it (its sound too). **PRESETS** is still the pattern.
+- **EDIT: the sound of the line selected** (each line its own). **SELECT** its parts: **OSC** (WAVE saw to square,
+  SUB, DRIVE, LEVEL), **FILTER** (CUTOFF, RESO, ENV, KEYTRK), **ENV** (DECAY, SUSTAIN, ACCENT, GLIDE); K1–K4 theirs.
+  **PRESETS** a built-in sound (ACID, SQUELCH, GABBER, SUB, PLUCK, FAT), **ALGORITHM** the line, the keys play it;
+  its wave is drawn live at the top. EDIT again: HOME.
+- **The kick, the drums and the break's sounds: SEL + EDIT** (KICK, then DRUMS, then BREAK, round). The patterns'
+  steps (the break's and the drums' lanes, SEQ's before) are no longer edited on the panel: the patterns play as
+  saved and PRESETS picks them. KICK 11–20 start as the built-in kicks at each power-on (their store object holds
+  the bass lines now). **SAVE** keeps the lines and their sounds.
+
 ## Contents
 
 1. Install
@@ -155,8 +184,8 @@ sources, the pattern, the song, the mix, the effects, the system.
 | Button | Domain | Its parts |
 | --- | --- | --- |
 | HOME | LIVE | PERFORM, GENERATOR, SPLIT (EXPERT, 0.9.71), CHAOS (0.9.75); HOME again: the next tab (its settings are SYSTEM › DISPLAY's since 0.9.56). HOME is the main page: FX, ENV, LFO, GLO or ARP pressed again come back to it, SELECT turning their tabs |
-| EDIT | SOUNDS | Three sources, **SEL + EDIT** the next: **KICK** (its menu, by the kick's anatomy: ATTACK, BODY, TAIL, DIRT, FX1, FX2, MORE; SELECT its next section; EDIT again the next sound, EXPERT: SNARE, HAT, CLAP, then the KICK), **DRUMS** (SNARE, HAT, CLAP; EDIT again the next), **BREAK** (PITCH, GRAIN, SNAP, LEVEL; ALGORITHM the break) |
-| SEQ | PATTERN | The lanes (ALGORITHM); the views FULL, DRUMS and **GROOVE** (SWING, BREAK ROWS, FOLLOW; also SEL + ARP) on SELECT |
+| EDIT | BASS | The sound of the bass line selected (see **The BASS** above). **SEL + EDIT**: the drums' and the break's sounds, KICK (its menu: ATTACK, BODY, TAIL, DIRT, FX1, FX2, MORE; SELECT its next section; EDIT again the next sound), DRUMS, BREAK, round |
+| SEQ | BASS SEQ | The eight bass lines (see **The BASS** above); **GROOVE** (SWING): SEL + ARP |
 | ENV | SONG | TRACKS, PLAY, DROP, BUILD, BUILD BRK, DROP BANK |
 | LFO | MIX | LEVELS (BREAK, KICK, PERC), ROUTING (FX, the drums' route, DUCKS, ROLL), MASTER, DYNAMICS |
 | FX | EFFECTS | The four slots: MAIN, MORE, MOD |
@@ -169,8 +198,8 @@ table (tap SEL alone to see it):
 
 | SEL + | Does | SEL + | Does |
 | --- | --- | --- | --- |
-| EDIT | The next source | REC | Clear (the lane on SEQ, the pattern elsewhere) |
-| SEQ | Copy the pattern; on another, paste | SAVE | Undo |
+| EDIT | The drums' sounds (KICK, DRUMS, BREAK) | REC | Clear (the bass line on SEQ and EDIT, the pattern elsewhere) |
+| SEQ | Copy the bass line; on another, paste | SAVE | Undo |
 | ENV | The build, then the drop | ALGORITHM | The break |
 | ARP | PATTERN's GROOVE | SELECT | The drums' filter |
 
@@ -201,7 +230,7 @@ the pages without any: what SEL + K1–K4 turn). SEL again, or any other button,
 | SEL + SAVE | **Undo** the last pattern wipe (SEL + REC, a drum lane's FILL, CLR / 4X4 or COPY); again: redo |
 | OCT− / OCT+ | Pitch in semitones (hold to go faster). Both: back to 0. Back to 0 at every start too (0.9.73) |
 | PRESETS | The pattern, P1–P64 (§5); while playing the new one starts at the end of the loop |
-| SEQ · REC | The sequencer; recording the keys into the pattern (§5). SEL + REC: clear the pattern (SEL + SAVE takes it back) |
+| SEQ · REC | The bass lines; on SEQ and EDIT, REC records the keys into the line (stopped: step by step), elsewhere the keys into the pattern (§5). SEL + REC: clear the line there, the pattern elsewhere (SEL + SAVE takes it back) |
 | MIDI notes | Notes 48–63 (C3–D#4) play slices 1–16, held like the white keys; 36 the kick, 38 the snare, 39 the clap, 42 / 44 / 46 the hat (§8); any channel. SYSTEM › MIDI's PRESETS, NOTES IN: ALL, DRUMS (the drums alone), OFF |
 | ALGORITHM | (HOME, MIXER; SEL held: any page) The next or previous break: its name shows at once (amber in the header) and, while playing, it comes in at the next bar (the old one goes quiet for the bar's last 16th meanwhile); stopped, at once. AMEN10 135, AMEN05 158, AMEN20 164, UPDOWN 165, AMEN06 169, AMEN19 172, AMEN13 173 (the Amens: The Winstons, cut by Cyberworm), FOCUZ 175 (DNGN DRGNS, "Focuz (DNGN DRGNS Remix)"): 2 bars each, slowest first, played at the tempo you set; then **your own breaks**, if you sent some (below) |
 | MASTER | Volume |

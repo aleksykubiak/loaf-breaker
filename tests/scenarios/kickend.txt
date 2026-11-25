@@ -2,7 +2,9 @@
 # 1000 ms by 20 ms as before (49 detents), then on to 3 s by 50 ms (40 more): 89 its last.
 #   app/build/host/loaf-breaker_host tests/scenarios/kickend.txt app/build/scenarios
 wait 4200
+press SEL
 tap EDIT
+release SEL
 wait 300
 turn SELECT 1 10
 wait 150

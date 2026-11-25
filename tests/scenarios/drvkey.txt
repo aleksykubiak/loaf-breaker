@@ -40,7 +40,9 @@ wait 100
 key b8 up
 wait 200
 expect drv_off 1
+press SEL
 tap EDIT
+release SEL
 wait 300
 turn K1 4 10
 wait 300

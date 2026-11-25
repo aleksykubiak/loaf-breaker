@@ -10,14 +10,14 @@
 
 enum { TC_HGEN = 100, TC_HSET, TC_HVIEW, TC_HBACK, TC_HHOLD };   /* (0.9.2, FLEXOR: HOME's tabs) */
 enum { TC_HOME, TC_PLAY, TC_SLICES, TC_BRK, TC_PAD, TC_OVLPG, TC_OVLKEY, TC_EDIT, TC_STOP, TC_KEYS4, TC_KPRE, TC_DISTO, TC_SHAPE, TC_TAIL, TC_PRESETS,
-       TC_SNPG, TC_PPRE, TC_PFX, TC_SEQ, TC_KICKS, TC_SNARE, TC_FXPG, TC_FXT, TC_DROP, TC_SAVE, TC_END };
+       TC_SNPG, TC_PPRE, TC_PFX, TC_SEQ, TC_KICKS, TC_SNARE, TC_FXPG, TC_FXT, TC_DROP, TC_SAVE, TC_END, TC_BEDIT };
 #define TK_WHITE 1u                      /* (the keys a step blinks: the white ones, the black ones) */
 #define TK_BLACK 2u
 #define TK_DRUMS 4u                      /* (keys 1-4: the kick, the snare, the hat, the clap, stopped) */
 #define TK_KEY1 8u                       /* (key 1: the kick) */
 #define TK_KEY2 16u                      /* (key 2: the snare) */
 #define TUT_LESSONS 10u
-static const char *const TUT_LESSON[TUT_LESSONS] = {"THE BREAK", "EFFECTS", "THE KICK", "THE DRUMS", "THE PATTERN", "THE FX",
+static const char *const TUT_LESSON[TUT_LESSONS] = {"THE BREAK", "EFFECTS", "THE KICK", "THE DRUMS", "THE BASS", "THE FX",
                                                     "THE DROP", "SAVE", "DONE", "HOME"};
 static const struct {
     uint8_t lesson, cond, keys, wait;    /* (wait: 1, its result to hear: 5 s before the next; 0: at once) */
@@ -36,11 +36,12 @@ static const struct {
     {1u, TC_PAD, TK_BLACK, 1u, 0u, "HOLD A BLACK KEY: AN EFFECT"},
     {1u, TC_OVLPG, 0u, 0u, 1u << B_ARP, "PRESS ARP: ALL THE EFFECTS"},   /* (0.244: the OVERLAY page back) */
     {1u, TC_OVLKEY, TK_WHITE, 1u, 0u, "HOLD WHITE KEYS: AN EFFECT EACH"},
-    {4u, TC_SEQ, 0u, 0u, 1u << B_SEQ, "PRESS SEQ: THE PATTERN"},   /* (0.252, FLEXOR: THE PATTERN before THE
-                                          * KICK: kicks in it first) */
-    {4u, TC_KICKS, TK_WHITE, 1u, 0u, "WHITE KEYS: PUT 2 KICKS IN"},
-    {4u, TC_SNARE, TK_WHITE, 1u, 0u, "ALGORITHM TO SNARE, ADD ONE"},
-    {2u, TC_EDIT, 0u, 0u, 1u << B_EDIT, "PRESS EDIT: THE KICK"},
+    {4u, TC_SEQ, 0u, 0u, 1u << B_SEQ, "PRESS SEQ: THE BASS LINES"},   /* (THE BASS, ui/bass.c: in THE PATTERN's
+                                          * place, SEQ is the bass's) */
+    {4u, TC_KICKS, 0u, 1u, 0u, "TURN ALGORITHM: ANOTHER LINE"},   /* (TC_KICKS: a line picked; TC_SNARE: notes played) */
+    {4u, TC_SNARE, TK_WHITE | TK_BLACK, 1u, 0u, "PLAY THE KEYS: THE BASS"},
+    {4u, TC_BEDIT, 0u, 0u, 1u << B_EDIT, "PRESS EDIT: THE BASS SOUND"},
+    {2u, TC_EDIT, 0u, 0u, 1u << B_SEL | 1u << B_EDIT, "HOLD SEL, PRESS EDIT: THE KICK"},
     {2u, TC_STOP, 0u, 0u, 1u << B_PLAY, "PRESS PLAY: STOP THE BREAK"},   /* (0.252, FLEXOR: heard stopped, keys 1-4) */
     {2u, TC_KEYS4, TK_DRUMS, 1u, 0u, "KEYS 1-4: KICK SNARE HAT CLAP"},
     {2u, TC_KPRE, TK_KEY1, 1u, 0u, "TURN KNOB 1, KEY 1: HEAR THE KICK"},
@@ -65,7 +66,7 @@ static int tut_on(void) { return set.tut >= 1u && set.tut <= TUT_N; }
 /* what the steps watch (common.c's counters, counted where it happens: main.c, seq.c), against the step's start */
 static struct {
     uint32_t wk, padm, padn, kturn, sk4, lane, saves, home, kpre, t, fx, ovlk;
-    uint8_t kslot, drop, brk, disto, ppre, pfx;
+    uint8_t kslot, drop, brk, disto, ppre, pfx, bsel;
     float tail;
 } tut_at;
 static uint32_t tut_fx_sig(void)        /* (the FX chain's first two slots: their effects, presets included) */
@@ -83,6 +84,7 @@ static void tut_mark(void)
     tut_at.kturn = tut_kturn;
     tut_at.sk4 = tut_sk4;
     tut_at.lane = tut_lane;
+    tut_at.bsel = bls.sel;
     tut_at.saves = tut_saves;
     tut_at.home = tut_home;
     tut_at.kpre = tut_kpre;
@@ -247,12 +249,14 @@ static int tut_done(uint32_t c, const brk_status_t *st)
     case TC_DISTO:                       /* (five detents either way: 10 %, then key 1) */
         return (KICK_TERROR(&set.kick) >= tut_at.disto + 10u || KICK_TERROR(&set.kick) + 10u <= tut_at.disto) &&
                (tut_heard & 1u);
-    case TC_SEQ:
-        return ui.page == PG_SEQ;
+    case TC_SEQ:                         /* (THE BASS: its SEQ, a line picked, three notes, its EDIT) */
+        return ui.page == PG_BSEQ;
     case TC_KICKS:
-        return ui.page == PG_SEQ && sl_kick(ui.seq_lane) && tut_lane - tut_at.lane >= 2u;
+        return ui.page == PG_BSEQ && bls.sel != tut_at.bsel;
     case TC_SNARE:
-        return ui.page == PG_SEQ && sl_drum(ui.seq_lane) == DR_SNARE && tut_lane != tut_at.lane;
+        return bs_page() && tut_lane - tut_at.lane >= 3u;
+    case TC_BEDIT:
+        return ui.page == PG_BEDIT;
     case TC_DROP:
         return drop_n != tut_at.drop;
     case TC_SAVE:
@@ -323,12 +327,10 @@ static const char *tut_away(uint32_t c, uint16_t *btn)
         return "EDIT, THEN SELECT: THE SNARE";
     case TC_KICKS:
     case TC_SNARE:
-        if (ui.page != PG_SEQ) {
+        if (!bs_page()) {
             *btn = 1u << B_SEQ;
-            return "PRESS SEQ: BACK TO THE PATTERN";
+            return "PRESS SEQ: BACK TO THE LINES";
         }
-        if (c == TC_KICKS && !sl_kick(ui.seq_lane))
-            return "TURN SELECT: THE KICK LANE";
         return 0;
     case TC_FXT:
         if (ui.page != PG_FX) {

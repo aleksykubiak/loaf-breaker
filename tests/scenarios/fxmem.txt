@@ -27,7 +27,9 @@ tap REC
 release SEL
 wait 600
 expect fx_p1 37
+press SEL
 tap EDIT
+release SEL
 wait 300
 # (0.253: the KICK menu opens on ATTACK's PRESET; 0.264: SELECT, BODY)
 turn SELECT 1 10

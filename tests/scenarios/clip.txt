@@ -2,7 +2,9 @@
 # here its FX1 DRIVE); on the drums the same for a drum's memory.
 #   app/build/host/loaf-breaker_host tests/scenarios/clip.txt app/build/scenarios
 wait 4200
+press SEL
 tap EDIT
+release SEL
 wait 300
 turn SELECT 4 10
 wait 300
@@ -30,7 +32,9 @@ wait 300
 expect kslot 4
 expect fx_type 3
 shot cl_pasted.png
+press SEL
 tap EDIT
+release SEL
 wait 300
 expect page 7
 press SEL

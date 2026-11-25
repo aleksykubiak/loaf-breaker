@@ -3,7 +3,9 @@
 # T+ TYPE, RECT then TUBE; K4 to PITCH DROP (TUNE is no knob's), SEL + K4 three up. Then a kick on every beat with TERROR, played.
 #   app/build/host/loaf-breaker_host tests/scenarios/kicktools.txt app/build/scenarios
 wait 4200
+press SEL
 tap EDIT
+release SEL
 wait 300
 # (0.253: the KICK menu opens on ATTACK's PRESET; 0.264: SELECT, BODY)
 turn SELECT 1 10

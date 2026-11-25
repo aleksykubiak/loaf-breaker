@@ -26,7 +26,9 @@ key b8 up
 wait 200
 expect sub_off 1
 expect subdrv -1
+press SEL
 tap EDIT
+release SEL
 wait 300
 turn PRESET 1 10
 wait 300
@@ -40,7 +42,9 @@ expect ter_off 1
 expect sub_off 1
 tap HOME
 wait 300
+press SEL
 tap EDIT
+release SEL
 wait 300
 turn K1 3 10
 wait 300

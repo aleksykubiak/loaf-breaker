@@ -2,7 +2,9 @@
 # selected (KICK 5 here, EARLY HC: PRESETS once from KICK 4; K4 once ROTTERDAM, twice more TERROR, 0.9.39's round). Stopped, keys 1-5 play the drums on the big views too (the kick's, the drums').
 #   app/build/host/loaf-breaker_host tests/scenarios/kpreset.txt app/build/scenarios
 wait 4200
+press SEL
 tap EDIT
+release SEL
 wait 300
 # (0.253: the KICK menu opens on ATTACK's PRESET; 0.264: SELECT, BODY)
 turn SELECT 1 10

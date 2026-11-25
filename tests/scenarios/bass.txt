@@ -1,0 +1,109 @@
+# The BASS: SEQ its eight lines (ALGORITHM the line, SELECT the step, K1 its note, K2 ACCENT / SLIDE; REC stopped:
+# step by step, REC playing: live, a key held a long note; SEL + REC clears; SEL + SEQ copies, then pastes; SEQ held
+# + white key 1-8 picks a line from any page), EDIT the sound of the line selected; SAVE keeps them
+#   app/build/host/loaf-breaker_host tests/scenarios/bass.txt app/build/scenarios
+wait 4200
+tap SEQ
+wait 300
+expect page 14
+expect bsel 0
+expect bnotes 28
+shot b_seq.png
+turn ALGO 6 10
+wait 100
+expect bsel 6
+expect bnotes 0
+tap REC
+expect brec 1
+tapkey w0
+tapkey w4
+tapkey b2
+wait 100
+expect bnotes 3
+expect bcur 3
+turn SELECT -3 10
+wait 50
+expect bnote 29
+turn K2 1 10
+expect bflags 1
+turn SELECT 1 10
+expect bnote 36
+turn K1 2 10
+expect bnote 38
+shot b_steps.png
+tap REC
+expect brec 0
+press SEL
+tap REC
+release SEL
+wait 50
+expect bnotes 0
+tap PLAY
+wait 600
+tap REC
+key 0 down
+wait 420
+key 0 up
+wait 200
+tapkey w4
+wait 300
+tapkey w7
+wait 400
+expect bties >2
+expect bnotes >5
+shot b_recorded.png
+tap REC
+press SEL
+tap SEQ
+release SEL
+turn ALGO 1 10
+press SEL
+tap SEQ
+release SEL
+wait 50
+expect bsel 7
+expect bnotes >5
+tap HOME
+wait 200
+expect page 0
+press SEQ
+tapkey w1
+release SEQ
+wait 50
+expect bsel 1
+expect page 0
+wait 3000
+expect bplay 1
+wav bass_lines.wav
+press SEQ
+tapkey w3
+release SEQ
+wait 3000
+press SEQ
+tapkey w0
+release SEQ
+wait 3000
+expect bplay 0
+expect bmeter >-40
+tap EDIT
+wait 200
+expect page 15
+turn SELECT 1 10
+turn K1 -8 10
+expect bcut 22
+shot b_edit.png
+tap EDIT
+wait 100
+expect page 0
+tap PLAY
+tap SAVE
+wait 300
+reboot
+wait 3000
+tap SEQ
+wait 300
+expect bsel 0
+expect bcut 22
+turn ALGO 7 10
+expect bnotes >5
+shot b_reboot.png

@@ -2,7 +2,9 @@
 # section PRESETS the effect, SEL + PRESETS the kick). KICK 4: FX1 a DRIVE; PRESETS: KICK 5, its FX1 empty; back: KICK 4's DRIVE.
 #   app/build/host/loaf-breaker_host tests/scenarios/kfxkick.txt app/build/scenarios
 wait 4200
+press SEL
 tap EDIT
+release SEL
 wait 300
 turn SELECT 4 10
 wait 300

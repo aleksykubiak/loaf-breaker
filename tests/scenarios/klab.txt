@@ -5,7 +5,9 @@
 # KICK 5, its own LAB (EARLY HC's, 0.9.39: CLEAN, no STACK); back to KICK 4: CLEAN and its STACK again. SAVE.
 #   app/build/host/loaf-breaker_host tests/scenarios/klab.txt app/build/scenarios
 wait 4200
+press SEL
 tap EDIT
+release SEL
 wait 300
 # (0.253: the KICK menu opens on ATTACK's PRESET; 0.264: SELECT, BODY)
 turn SELECT 1 10

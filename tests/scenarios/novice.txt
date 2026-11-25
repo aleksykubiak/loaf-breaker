@@ -13,7 +13,9 @@ expect gpage 2
 turn K3 -1 10
 wait 200
 shot nv_more.png
+press SEL
 tap EDIT
+release SEL
 wait 300
 expect page 4
 expect kpage 4
@@ -95,7 +97,9 @@ turn SELECT 1 10
 wait 300
 turn K3 1 10
 wait 200
+press SEL
 tap EDIT
+release SEL
 wait 300
 expect kpage 4
 turn ALGO 1 10

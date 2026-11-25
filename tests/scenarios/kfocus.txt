@@ -14,7 +14,9 @@ expect page 11
 turn K2 1 60
 wait 200
 expect wstyle 1
+press SEL
 tap EDIT
+release SEL
 wait 300
 turn SELECT -1 10
 wait 200

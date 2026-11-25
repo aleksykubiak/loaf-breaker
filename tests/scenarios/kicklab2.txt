@@ -4,7 +4,9 @@
 wait 4200
 expect tok 0
 expect gate 0
+press SEL
 tap EDIT
+release SEL
 wait 300
 turn ALGO 4 80
 wait 300

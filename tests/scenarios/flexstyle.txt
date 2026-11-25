@@ -3,7 +3,9 @@
 # PRESETS the styles (0.9.66; SEL + PRESETS before).
 #   app/build/host/loaf-breaker_host tests/scenarios/flexstyle.txt app/build/scenarios
 wait 4200
+press SEL
 tap EDIT
+release SEL
 wait 300
 # (0.253: the KICK menu opens on ATTACK's PRESET; 0.264: SELECT, BODY)
 turn SELECT 1 10

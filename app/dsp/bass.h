@@ -40,5 +40,13 @@ typedef struct {
 void bass_init(void);
 void bass_set(const bass_t *b);          /* main loop: read at the next render */
 void bass_panic(void);                   /* the voice silenced at once (stop) */
+void bass_gate_off(void);                /* main loop: the note held let go at the next render (a key up) */
+/* the screen's picture: the output, every BASS_SCOPE_DEC-th sample, in a ring of BASS_SCOPE_N (-127..127);
+ * bass_scope_at the next one written */
+#define BASS_SCOPE_N 512u
+#define BASS_SCOPE_DEC 4u
+extern int8_t bass_scope[BASS_SCOPE_N];
+extern volatile uint32_t bass_scope_at;
+extern volatile float bass_env_now;      /* the amp envelope, 0..1 (the screen's) */
 /* render: n samples into out (overwritten); notes nt[0..nn-1] starting at the sample offsets at[0..nn-1] (rising) */
 void bass_render(float *out, uint32_t n, const uint16_t *at, const bass_note_t *nt, uint32_t nn);

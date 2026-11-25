@@ -15,7 +15,9 @@ expect page 11
 tap HOME
 wait 200
 expect page 0
+press SEL
 tap EDIT
+release SEL
 wait 300
 # (0.253: the KICK menu opens on ATTACK's PRESET; 0.9.29: SELECT six times MORE, its EQ B two parts back; SELECT
 # twice back FX1)
@@ -69,7 +71,9 @@ expect page 5
 turn K1 20 10
 wait 200
 shot r_master.png
+press SEL
 tap EDIT
+release SEL
 wait 300
 turn SELECT 3 10
 wait 300

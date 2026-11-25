@@ -2,7 +2,9 @@
 # again; SELECT the KICK's sections (the tabs at the top).
 #   app/build/host/loaf-breaker_host tests/scenarios/editround.txt app/build/scenarios
 wait 4200
+press SEL
 tap EDIT
+release SEL
 wait 300
 expect page 4
 turn SELECT 1 10

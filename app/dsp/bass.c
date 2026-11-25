@@ -65,9 +65,14 @@ BRK_INL float blep(float t, float dt)    /* the polyBLEP step correction at phas
     return 0.0f;
 }
 
+int8_t bass_scope[BASS_SCOPE_N];
+volatile uint32_t bass_scope_at;
+volatile float bass_env_now;
+static uint32_t scope_dec;
+
 static struct {
     bass_t set, next;
-    volatile uint32_t pending;
+    volatile uint32_t pending, off;
     /* derived from set */
     float fdec, fdec_acc, glide_k, amp_dec, sus;
     /* the voice */
@@ -98,7 +103,7 @@ void bass_init(void)
         B.s[i] = 0.0f;
     B.y4 = B.fenv = B.aenv = B.acc = 0.0f;
     B.note = B.target = 36.0f;
-    B.gate_left = B.gated = B.playing = B.tie = 0u;
+    B.gate_left = B.gated = B.playing = B.tie = B.off = 0u;
 }
 
 void bass_set(const bass_t *b)
@@ -106,6 +111,8 @@ void bass_set(const bass_t *b)
     B.next = *b;
     B.pending = 1u;
 }
+
+void bass_gate_off(void) { B.off = 1u; }
 
 void bass_panic(void)
 {
@@ -142,6 +149,11 @@ void bass_render(float *out, uint32_t n, const uint16_t *at, const bass_note_t *
         B.set = B.next;
         B.pending = 0u;
         derive();
+    }
+    if (B.off) {                         /* a key let go: the release (a slide held let go too) */
+        B.off = 0u;
+        B.gated = 0u;
+        B.tie = 0u;
     }
     p = B.set.p;
     wave = p[BS_WAVE];
@@ -216,7 +228,14 @@ void bass_render(float *out, uint32_t n, const uint16_t *at, const bass_note_t *
         y = (u + sub * brk_sin_turns(B.sph) * 1.2f) * lvl * 0.5f;
         y = tanh_a(y * dg) * dnorm;
         out[i] = y * B.set.volume;
+        if (++scope_dec >= BASS_SCOPE_DEC) {
+            float q = y * 127.0f;
+            scope_dec = 0u;
+            bass_scope[bass_scope_at % BASS_SCOPE_N] = (int8_t)(q > 127.0f ? 127.0f : q < -127.0f ? -127.0f : q);
+            bass_scope_at = bass_scope_at + 1u;
+        }
     }
+    bass_env_now = B.aenv;
     while (k < nn)                       /* (offsets past the block: started at its end) */
         start(&nt[k++]);
 }
