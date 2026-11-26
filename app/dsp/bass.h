@@ -8,6 +8,8 @@
  *   ACCENT louder, the filter opened further and its decay shorter (the 303's accent), by ACCENT
  *   SLIDE  a step marked SLIDE ties into the next one: no new attack, the pitch gliding over GLIDE
  *   DRIVE  a soft clip after the filter, then the volume
+ *   MOD    (BABSZTYL) two more saws detuned either side (DETUNE, OSC 2: the REESE, the HOOVER, a SUPERSAW) and an LFO
+ *          on the filter at the tempo (RATE 1/1 .. 1/16T, DEPTH: the WOBBLE, the YOI): bass_set_mod
  * Platform-free like the kick and the drums: settings from the main loop (bass_set, read once a block), notes at
  * sample offsets in the render. */
 #pragma once
@@ -22,9 +24,16 @@ typedef struct {
     float volume;                        /* 0..1: the mixer's BASS fader */
 } bass_t;
 
-#define BASS_PRESETS 6u
+#define BASS_PRESETS 20u                 /* (BABSZTYL: 6 then 14 more) */
 extern const char *const BASS_PRESET_NAME[BASS_PRESETS];
 void bass_preset(bass_t *b, uint32_t i); /* a built-in sound (the volume kept) */
+/* MOD, packed (a line's 16 bits): bits 0-3 DETUNE (0..15), 4-7 OSC 2 (0..15, 0: none), 8-10 the LFO's RATE (BASS_RATES),
+ * 11-15 its DEPTH (0..31, 0: none) */
+#define BASS_MOD(det, mix, rate, depth) ((uint16_t)((det) | (mix) << 4 | (rate) << 8 | (depth) << 11))
+#define BASS_RATES 8u
+extern const char *const BASS_RATE_NAME[BASS_RATES];
+uint16_t bass_preset_mod(uint32_t i);    /* a built-in sound's MOD */
+float bass_detune_st(uint32_t det);      /* DETUNE's level in semitones (0 .. 0.6) */
 void bass_defaults(bass_t *b);           /* ACID, volume 0.8 */
 float bass_cutoff_hz(float v);           /* CUTOFF's knob in Hz (40 .. 12 000, exponential) */
 float bass_decay_ms(float v);            /* DECAY's knob in ms (30 .. 2000) */
@@ -39,6 +48,8 @@ typedef struct {
 
 void bass_init(void);
 void bass_set(const bass_t *b);          /* main loop: read at the next render */
+void bass_set_mod(uint32_t mod, uint32_t step_len);   /* the render's: MOD (packed) and a 16th's length in samples */
+void bass_lfo_reset(uint32_t at);        /* the render's: the LFO from its start at sample at of the next block */
 void bass_panic(void);                   /* the voice silenced at once (stop) */
 void bass_gate_off(void);                /* main loop: the note held let go at the next render (a key up) */
 /* the screen's picture: the output, every BASS_SCOPE_DEC-th sample, in a ring of BASS_SCOPE_N (-127..127);

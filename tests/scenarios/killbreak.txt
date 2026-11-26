@@ -16,6 +16,13 @@ wait 300
 expect bk_fn 20
 tap HOME
 wait 200
+key b0 down   # (BABSZTYL: LATCH on to start: off, here, with the key held)
+wait 50
+turn K4 -1 10
+wait 50
+key b0 up
+wait 100
+expect kbrk 0
 tap PLAY
 wait 1200
 expect kbgain 100

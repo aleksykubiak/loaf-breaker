@@ -4,6 +4,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include "bass.h"
 #include "brk.h"
 
@@ -70,6 +71,7 @@ static void test_bounded(void)
         bass_init();
         bass_defaults(&b);
         bass_preset(&b, pr);
+        bass_set_mod(bass_preset_mod(pr), 4000u);   /* (BABSZTYL: its MOD too) */
         b.p[BS_RESO] = 1.0f;
         b.p[BS_ENV] = 1.0f;
         b.volume = 1.0f;
@@ -196,6 +198,83 @@ static void demo(const char *dir)
     printf("demo: %s (%u s)\n", path, total / BRK_SR);
 }
 
+/* BABSZTYL: the presets added (DUB SUB on), two bars each at 165 BPM, a line under them; and MOD's cost */
+static float pbuf[BRK_SR * 46u];
+static void presets(const char *dir)
+{
+    static const int8_t LINE[16] = {0, -1, 0, 12, -1, 0, 3, -1, 0, 0, 12, -1, 7, -1, 5, 3};
+    static const uint8_t ACC[16] = {1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0};
+    static const uint8_t SLD[16] = {0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0};
+    char path[600];
+    bass_t b;
+    float bb[BLK];
+    uint32_t spstep = BRK_SR * 60u / 165u / 4u, first = 6u, n = BASS_PRESETS - first, total = spstep * 32u * n, t, i;
+    bass_init();
+    bass_defaults(&b);
+    for (t = 0; t < total; t += BLK) {
+        uint32_t step0 = t / spstep, off = step0 * spstep;
+        uint16_t ba[2];
+        bass_note_t nt[2];
+        uint32_t nb = 0u;
+        if (off < t) {
+            off += spstep;
+            step0++;
+        }
+        bass_set_mod(bass_preset_mod(first + step0 / 32u), spstep);
+        if (off < t + BLK) {
+            uint32_t s = step0 % 16u, o = off - t;
+            if (step0 % 32u == 0u) {
+                bass_preset(&b, first + step0 / 32u);
+                bass_set(&b);
+                bass_set_mod(bass_preset_mod(first + step0 / 32u), spstep);
+            }
+            if (s == 0u)
+                bass_lfo_reset(o);
+            if (LINE[s] >= 0) {
+                nt[nb].note = (uint8_t)(31 + LINE[s]);
+                nt[nb].accent = ACC[s];
+                nt[nb].slide = SLD[s];
+                nt[nb].rsv = 0u;
+                nt[nb].gate = spstep * 11u / 20u;
+                ba[nb++] = (uint16_t)o;
+            }
+        }
+        bass_render(bb, BLK, ba, nt, nb);
+        for (i = 0; i < BLK && t + i < total; i++)
+            pbuf[t + i] = 0.8f * bb[i];
+    }
+    snprintf(path, sizeof path, "%s/bass_presets.wav", dir);
+    wav(path, pbuf, total);
+    printf("presets: %s (%u s:", path, total / BRK_SR);
+    for (i = first; i < BASS_PRESETS; i++)
+        printf(" %s", BASS_PRESET_NAME[i]);
+    printf(")\n");
+}
+static double cost(uint32_t pr, uint32_t mod)
+{
+    bass_t b;
+    uint32_t i;
+    clock_t c0;
+    bass_init();
+    bass_defaults(&b);
+    bass_preset(&b, pr);
+    bass_set(&b);
+    bass_set_mod(mod, 4000u);
+    c0 = clock();
+    for (i = 0; i < 20u * BRK_SR / BLK; i++) {
+        bass_note_t nt = {36u, 0u, 0u, 0u, 3000u};
+        uint16_t at = 0u;
+        bass_render(buf, BLK, &at, &nt, i % 64u == 0u ? 1u : 0u);
+    }
+    return (double)(clock() - c0) / CLOCKS_PER_SEC;
+}
+static void test_mod(void)
+{
+    double base = cost(0u, 0u), full = cost(15u, BASS_MOD(13u, 15u, 3u, 24u));
+    printf("MOD's cost: %.0f %% of the voice without it\n", 100.0 * full / base);
+    CHECK(full < base * 2.0, "MOD costs %.1fx", full / base);
+}
+
 int main(int argc, char **argv)
 {
     test_pitch();
@@ -203,6 +282,8 @@ int main(int argc, char **argv)
     test_release();
     test_slide();
     demo(argc > 1 ? argv[1] : ".");
+    presets(argc > 1 ? argv[1] : ".");
+    test_mod();
     printf("%d of %d checks passed\n", checks - fails, checks);
     return fails != 0;
 }

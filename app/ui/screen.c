@@ -89,8 +89,10 @@ static int32_t gl_shift(int32_t row)     /* a band of rows: shifted, or not (a t
         return 0;
     return (int32_t)((h >> 8) % (uint32_t)(2 * gl_amt + 1)) - gl_amt;
 }
+#ifdef SPLASH_BAR_X
 static int32_t pic_bar;                  /* BABSZTYL: the splash's BOOTING bar, its fill (pixels; 0: as the picture has it,
                                           * empty), drawn over the picture's rows it covers (splash_data.h's SPLASH_BAR_*) */
+#endif
 static void pic_draw(const uint8_t *rle, uint32_t len, const uint16_t *pal, int32_t w, int32_t x0, int32_t y0,
                      int32_t r0, int32_t r1)   /* (BABSZTYL: rows r0..r1-1 alone, the bar's) */
 {
@@ -150,51 +152,71 @@ static void grey_draw(const uint8_t *rle, uint32_t len, const uint16_t *pal, int
 
 
 /* fm1-base's first screen at power-on, while the breaks are decoded (APP_SPLASH): the mark and the name (LOAF
- * BREAKER: its picture, nearly the whole screen, the version at the top right; held 1.5 s, app_frame. BABSZTYL: its
- * picture (art/babsztyl_splash.jpg, tools/make_splash.py), the screen's width, at the top, its foot dark as the screen
- * under it, the version there at the right; its BOOTING bar filling as it's held, full at 1.35 s) */
+ * BREAKER: its picture, nearly the whole screen, the version at the top right; held 1.5 s, app_frame). BABSZTYL
+ * (26 Nov 2026): its picture alone (art/babsztyl_splash.jpg, tools/make_splash.py), the screen's width, at the top, its
+ * foot dark as the screen under it; held SPLASH_HOLD, zooming in slowly as it loads (its own pixels bigger: 1 to
+ * SPLASH_ZOOM, towards its lettering), "by Aleksy Kubiak" under all its lettering, still */
 #define SPLASH_Y 0                       /* (the picture's top row on the screen) */
-#define SPLASH_FULL 1350u                /* (ms: the bar full) */
+#define SPLASH_HOLD 2000u                /* (ms) */
+#define SPLASH_ZQ 56                     /* (the zoom at the end, 1 + SPLASH_ZQ / 256: 1.22) */
+#define SPLASH_CX (SPLASH_W / 2)         /* (the zoom's centre: the lettering's) */
+#define SPLASH_CY (SPLASH_H * 7 / 10)
 static uint32_t splash_t;                /* when it was drawn (0: gone) */
-static int32_t splash_fill(uint32_t age) /* the bar's fill at this age (pixels, 1.. at its start: never "empty") */
-{
-#ifdef SPLASH_BAR_W
-    if (age > SPLASH_FULL)
-        age = SPLASH_FULL;
-    return 1 + (int32_t)(age * (uint32_t)(SPLASH_BAR_W - 1) / SPLASH_FULL);
-#else
-    (void)age;
-    return 0;
-#endif
-}
-static void splash_bar(uint32_t age)     /* BABSZTYL: the bar's rows again, its fill as it is now */
-{
-#if CH_LOGO && defined(SPLASH_BAR_Y)
-    static int32_t shown;
-    int32_t f = splash_fill(age);
-    if (f == shown)
-        return;
-    shown = f;
-    pic_bar = f;
-    pic_draw(SPLASH_RLE, sizeof SPLASH_RLE, SPLASH_PAL, SPLASH_W, (240 - SPLASH_W) / 2, SPLASH_Y, SPLASH_BAR_Y,
-             SPLASH_BAR_Y + SPLASH_BAR_H);
-    pic_bar = 0;
-#else
-    (void)age;
-#endif
-}
-static void splash_glitch(uint32_t age)  /* LOAF BREAKER TEST: the start-up picture, its rows jumping, settling by 700 ms */
+static void splash_zoom(uint32_t age)    /* the picture at its zoom for this age, in strips (the credit's band left) */
 {
 #if CH_LOGO
-    gl_amt = age < 700u ? (int32_t)((700u - age) * 24u / 700u) + 1 : 0;
-    gl_seed = age / 40u;
-    sfx_splash_d = (uint8_t)(2 + gl_amt / 4);   /* (LOAF BREAKER: its red off, the more as it jumps) */
-    gl_band = age < 700u ? (int32_t)(age * (uint32_t)SPLASH_H / 560u) - 8 : -1;   /* (rolling down the picture) */
-    pic_bar = splash_fill(age);          /* (BABSZTYL: the bar in it, as far as it's got) */
-    grey_draw(SPLASH_RLE, sizeof SPLASH_RLE, SPLASH_PAL, SPLASH_W, SPLASH_H, (240 - SPLASH_W) / 2, SPLASH_Y);
-    pic_bar = 0;
-    gl_amt = 0;
-    gl_band = -1;
+    static uint16_t rowo[SPLASH_H] PLAT_POOL;   /* (each row's first run in SPLASH_RLE) */
+    static uint8_t line[SPLASH_W] PLAT_POOL;
+    static uint8_t built;
+    int32_t z = 256 + (int32_t)((age > SPLASH_HOLD ? SPLASH_HOLD : age) * (uint32_t)SPLASH_ZQ / SPLASH_HOLD), r, sh;
+    int32_t x0 = (240 - SPLASH_W) / 2;
+    if (!built) {
+        uint32_t i, row = 0u, x = 0u;
+        rowo[0] = 0u;
+        for (i = 0; i < sizeof SPLASH_RLE && row < SPLASH_H; i++) {
+            x += (SPLASH_RLE[i] >> 4) + 1u;
+            if (x >= SPLASH_W) {
+                x = 0u;
+                if (++row < SPLASH_H)
+                    rowo[row] = (uint16_t)(i + 1u);
+            }
+        }
+        built = 1u;
+    }
+    sfx_splash_d = 255u;                 /* (no screen effect on it: the picture alone, clean) */
+    for (r = 0; r < SPLASH_H; r += sh) {
+        int32_t y;
+        sh = SPLASH_H - r < 60 ? SPLASH_H - r : 60;
+        cv_begin(240, (uint32_t)sh, C_BLACK);
+        for (y = 0; y < sh; y++) {
+            int32_t sy = SPLASH_CY + (r + y - SPLASH_CY) * 256 / z, x, run = 0, rc = 0;
+            uint32_t i, px = 0u;
+            if (sy < 0 || sy >= SPLASH_H)
+                continue;
+            for (i = rowo[sy]; px < SPLASH_W && i < sizeof SPLASH_RLE; i++) {   /* (its source row) */
+                uint32_t n = (SPLASH_RLE[i] >> 4) + 1u, c = SPLASH_RLE[i] & 15u;
+                while (n-- && px < SPLASH_W)
+                    line[px++] = (uint8_t)c;
+            }
+            for (x = 0; x <= SPLASH_W; x++) {   /* (the row zoomed, its runs) */
+                int32_t sx = SPLASH_CX + (x - SPLASH_CX) * 256 / z, c = x < SPLASH_W && sx >= 0 && sx < SPLASH_W ? line[sx] : -1;
+                if (x && c != rc) {
+                    if (rc > 0)
+                        cv_rect(x0 + x - run, y, run, 1, SPLASH_PAL[rc]);
+                    run = 0;
+                }
+                rc = c;
+                run++;
+            }
+        }
+        cv_blit(0, (uint32_t)(SPLASH_Y + r));
+    }
+    if (SPLASH_Y + SPLASH_H <= 240 - 14) {   /* (BABSZTYL: under all its lettering, the credit, still) */
+        static const char by[] = "by Aleksy Kubiak";
+        cv_begin(240, 240 - SPLASH_Y - SPLASH_H, C_BLACK);
+        cv_text((240 - text_w(&FONT_XS, by)) / 2, 8, &FONT_XS, by, C_GRAY);
+        cv_blit(0, SPLASH_Y + SPLASH_H);
+    }
     sfx_splash_d = 0u;
 #else
     (void)age;
@@ -204,18 +226,7 @@ void app_splash(void)
 {
     lcd_fill(0, 0, 240, 240, C_BLACK);
 #if CH_LOGO
-    sfx_splash_d = 2u;                   /* (LOAF BREAKER: the picture's red two pixels off) */
-    pic_bar = splash_fill(0u);
-    grey_draw(SPLASH_RLE, sizeof SPLASH_RLE, SPLASH_PAL, SPLASH_W, SPLASH_H, (240 - SPLASH_W) / 2, SPLASH_Y);
-    pic_bar = 0;
-    sfx_splash_d = 0u;
-    if (SPLASH_Y + SPLASH_H <= 240 - 12) {
-        char t[24];                     /* (a TEST's "0.268 TEST 12" too) */
-        version_text(t);
-        cv_begin(240, 240 - SPLASH_Y - SPLASH_H, C_BLACK);   /* (BABSZTYL: under the picture, at the right) */
-        cv_text(234 - text_w(&FONT_T, t), 240 - SPLASH_Y - SPLASH_H - 12, &FONT_T, t, C_GRAY);
-        cv_blit(0, SPLASH_Y + SPLASH_H);
-    }
+    splash_zoom(0u);
     splash_t = plat_ms() | 1u;
 #else
     cv_begin(240, 60, C_BLACK);

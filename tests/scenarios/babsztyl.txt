@@ -1,0 +1,109 @@
+# BABSZTYL (26 Nov 2026): SEQ's K4 DEL (a step, a long note whole), SEQ again its GENERATOR (CORE, VARIATION, ROLL,
+# FILL), SEL + PRESETS on SEQ a sound on the whole bank, EDIT › MOD (DETUNE, OSC 2, LFO RATE, DEPTH), the default
+# black keys' first two KILL BREAK and KILL BASS (LATCH on)
+#   app/build/host/loaf-breaker_host tests/scenarios/babsztyl.txt app/build/scenarios
+wait 4200
+tap SEQ
+wait 300
+expect page 14
+expect bstab 0
+expect bnotes 28
+expect bnote >0
+turn K4 1 10
+wait 50
+expect bnote 0
+expect bnotes 27
+turn ALGO 3 10
+wait 100
+expect bsel 3
+expect bnotes 32
+expect bties >20
+turn K4 1 10
+wait 50
+expect bnote 0
+expect bnotes 24
+shot bz_del.png
+tap SEQ
+wait 100
+expect page 14
+expect bstab 1
+turn ALGO -3 10
+turn K1 -50 10
+turn K2 25 10
+turn K3 10 10
+wait 100
+expect bcore 0
+expect bvar 50
+expect bgroll 20
+expect bgenvar >5
+shot bz_gen.png
+tap PLAY
+wait 2500
+expect bmeter >-40
+tap PLAY
+wait 200
+tap SEQ
+wait 200
+expect page 0
+tap SEQ
+wait 200
+expect bstab 0
+expect bpre 0
+press SEL
+turn PRESET 7 10
+release SEL
+wait 100
+expect bpre 7
+turn ALGO 5 10
+wait 50
+expect bpre 7
+turn ALGO 3 10
+wait 50
+expect bpre 0
+turn ALGO -8 10
+wait 50
+expect bsel 0
+expect bpre 7
+tap EDIT
+wait 200
+expect page 15
+turn SELECT 3 10
+wait 100
+expect btab 3
+shot bz_mod.png
+turn K1 4 10
+turn K4 20 10
+wait 50
+expect bmod >20000
+turn PRESET 9 10
+wait 50
+expect bpre 16
+shot bz_wobble.png
+tap HOME
+wait 200
+tap ARP
+wait 200
+turn SELECT 1 10
+wait 100
+turn K1 -2 10
+wait 100
+expect bk_pre 0
+tap ARP
+wait 200
+tap PLAY
+wait 800
+tapkey b0
+wait 100
+expect kbrk 1
+tapkey b1
+wait 100
+expect kbas 1
+wait 600
+shot bz_kill.png
+tapkey b1
+wait 100
+expect kbas 0
+tapkey b0
+wait 100
+expect kbrk 0
+expect bmeter >-40

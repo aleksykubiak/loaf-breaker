@@ -151,12 +151,14 @@ static const char *const PAD_KNOB[BKF_N][4] = {   /* (LOAF BREAKER: by function,
                                           * through the ARP effects: the kick, the break, or both) */
     {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0},
     {"MODE", "TIME", "REVERB", "LATCH"},   /* (0.9.58: KILL BREAK) */
-    {0, 0, 0, 0}};                       /* (0.9.76: CHS, a press each) */   /* (KIL, X2: their LATCH, main.c; DST,
+    {0, 0, 0, 0},                        /* (0.9.76: CHS, a press each) */
+    {"MODE", "TIME", "REVERB", "LATCH"}, {"MODE", "TIME", "REVERB", "LATCH"}};   /* (BABSZTYL: KILL BASS, KILL BOTH:
+                                          * KILL BREAK's settings, shared) */   /* (KIL, X2: their LATCH, main.c; DST,
                                           * SUB, DRV: a press each) */
 static const char *const PAD_TITLE[BKF_N] = {"ROLL", "ROLL", "ROLL", "REVERSE", "FREEZE", "HALF SPEED",
-                                              "VINYL BREAK", "GATE", "RANDOM", "FILTER", "DUB", "OVERLAY", "KICKS OFF",
-                                              "DISTO", "SUB FX", "DRIVE", "KICKS X2", "KICKS X4", "KICK TRIPLETS",
-                                              "SUB DRIVE", "KILL BREAK", "CHAOS"};
+                                              "VINYL BREAK", "GATE", "RANDOM", "FILTER", "DUB", "OVERLAY", "BASS OFF",
+                                              "BASS DISTO", "BASS SUB", "BASS DRIVE", "BASS OCT UP", "BASS ACCENT",
+                                              "BASS ROLL", "SUB DRIVE", "KILL BREAK", "CHAOS", "KILL BASS", "KILL BOTH"};
 static const char *const FRZ_LEN_NAME[4] = {"SLICE", "1/2", "1/4", "1/8"};
 
 /* LOAF BREAKER: the ARP key's knobs (the OVERLAY page gone, its settings here). MAIN: K1 EFFECT, K2 its AMOUNT, K3
@@ -184,7 +186,7 @@ static const char *pad_knob_name(int pad, int k)
             return tk == 1 ? "RATE" : tk == 2 ? "SWEEP" : "TIME";
         }
     }
-    if (pad == BKF_KBR && k == 1 && kb_mode() == KB_BAR)
+    if ((pad == BKF_KBR || pad == BKF_KBS || pad == BKF_KBB) && k == 1 && kb_mode() == KB_BAR)
         return "ECHO";                   /* (0.9.60: BAR END's K2, its echo) */
     return PAD_KNOB[pad][k & 3];
 }
@@ -318,6 +320,8 @@ static void pad_knob_value(int pad, int k, char *t)
         else if (k == 2) kick_flt_text(t);
         else roll_decay_text(p->roll_decay, t);
         break;
+    case BKF_KBS:                        /* (BABSZTYL: KILL BASS, KILL BOTH: KILL BREAK's settings) */
+    case BKF_KBB:
     case BKF_KBR: {                      /* (0.9.58: KILL BREAK: MODE, its fade's TIME, BAR END's REVERB, LATCH) */
         static const char *const KM[KB_N] = {"FADE", "CUT", "BAR END", "END FADE"}, *const KT[KB_TIMES] = {"1/16", "1/8", "1/4",
                                                                                                "1/2", "1 BAR", "2 BARS"};
@@ -434,6 +438,8 @@ static void pad_knob_turn(int pad, int k, int32_t d)
         }
         else p->roll_decay = knob_f(p->roll_decay, d, 0.02f, -0.9f, 0.9f);
         break;
+    case BKF_KBS:                        /* (BABSZTYL: KILL BASS, KILL BOTH: the same settings) */
+    case BKF_KBB:
     case BKF_KBR:                        /* (0.9.58: KILL BREAK) */
         if (k == 0)
             kb_put((uint32_t)clamp((int32_t)kb_mode() + (d > 0 ? 1 : -1), 0, KB_N - 1), kb_latch(), kb_time(), kb_rev());
@@ -649,10 +655,14 @@ static void draw_fx_band(int pad, const brk_status_t *st, uint32_t now, int32_t 
         cv_text(234 - text_w(&FONT_XS, t), 2, &FONT_XS, t, C_GRAY);
         break;
     }
-    case BKF_KBR: {                      /* (0.9.58: KILL BREAK: its shape, the break's level falling as its MODE says) */
-        static const char *const KD[KB_N] = {"THE BREAK FADES OUT", "THE BREAK CUT AT ONCE", "OUT AT THE BAR'S END,",
-                                             "TO ITS LOOP'S END, THEN FADES OUT"};
+    case BKF_KBS:
+    case BKF_KBB:
+    case BKF_KBR: {                      /* (0.9.58: KILL BREAK: its shape, the break's level falling as its MODE says;
+                                          * BABSZTYL: the bass's, both) */
+        static const char *const KD[KB_N] = {"FADES OUT", "CUT AT ONCE", "OUT AT THE BAR'S END,",
+                                             "TO THE LOOP'S END, THEN FADES OUT"};
         uint32_t mo = kb_mode();
+        int out = pad == BKF_KBS ? kbas_hold : pad == BKF_KBB ? kbrk_hold && kbas_hold : kbrk_hold;
         for (i = 0; i < 200; i++) {      /* (its level over time: down the ramp, the step, or at the bar's end) */
             int32_t h = mo == KB_FADE ? 24 - i * 24 / 200 : mo == KB_CUT ? (i < 20 ? 24 : 0) : mo == KB_ENDF
                         ? (i < 100 ? 24 : 24 - (i - 100) * 24 / 100) : (i < 150 ? 24 : 0);
@@ -664,8 +674,7 @@ static void draw_fx_band(int pad, const brk_status_t *st, uint32_t now, int32_t 
         cv_text(20, FX_MID + 11, &FONT_XS, KD[mo], C_GRAY);
         if (mo == KB_BAR)
             cv_text(20, FX_MID + 22, &FONT_XS, kb_echo() ? "ITS LAST 8TH INTO THE ECHO AND REVERB" : "ITS LAST 8TH INTO THE REVERB", C_GRAY);
-        cv_text(234 - text_w(&FONT_XS, kbrk_hold ? "OUT" : "BACK"), 2, &FONT_XS, kbrk_hold ? "OUT" : "BACK",
-                kbrk_hold ? C_HI : C_GRAY);
+        cv_text(234 - text_w(&FONT_XS, out ? "OUT" : "BACK"), 2, &FONT_XS, out ? "OUT" : "BACK", out ? C_HI : C_GRAY);
         break;
     }
     case PAD_REVERSE: {                  /* REVERSE: the break running backwards past a fixed playhead, chevrons */
@@ -925,6 +934,10 @@ static int bkf_lit(uint32_t f, const brk_status_t *st)
         return (kick_x2 & 4u) != 0u;
     if (f == BKF_KBR)                    /* (0.9.58: KILL BREAK, the break out) */
         return kbrk_hold != 0u;
+    if (f == BKF_KBS)                    /* (BABSZTYL: KILL BASS, the bass out) */
+        return kbas_hold != 0u;
+    if (f == BKF_KBB)                    /* (KILL BOTH: both out) */
+        return kbrk_hold && kbas_hold;
     if (f == BKF_CHS)                    /* (0.9.76: CHAOS heard: the switch on and something set) */
         return !chaos_off && kx2.ch_tag == CH_TAG && (kx2.chaos[0] || kx2.chaos[1] || kx2.chaos[2]);
     if (f == BKF_SDR)                    /* (SDR: the BASS's SUB, as SUB) */

@@ -8,7 +8,12 @@ const char *const BASS_PARAM_NAME[BS_PARAMS] = {
     "WAVE", "SUB", "CUTOFF", "RESO", "ENV", "DECAY", "ACCENT", "GLIDE", "DRIVE", "SUSTAIN", "KEYTRK",
 };
 
-const char *const BASS_PRESET_NAME[BASS_PRESETS] = { "ACID", "SQUELCH", "GABBER", "SUB", "PLUCK", "FAT" };
+const char *const BASS_PRESET_NAME[BASS_PRESETS] = { "ACID", "SQUELCH", "GABBER", "SUB", "PLUCK", "FAT",
+                                                     "DUB SUB", "RUBBER", "STAB", "TECHNO", "SCREAM 303", "WARM",
+                                                     "BLIP", "REESE", "HOOVER", "SUPERSAW", "WOBBLE 1/4",
+                                                     "WOBBLE 1/8", "WOBBLE 1/16", "YOI" };
+const char *const BASS_RATE_NAME[BASS_RATES] = { "1/1", "1/2", "1/4", "1/8", "1/16", "1/4T", "1/8T", "1/16T" };
+static const float RATE16[BASS_RATES] = { 16.0f, 8.0f, 4.0f, 2.0f, 1.0f, 2.6667f, 1.3333f, 0.6667f };   /* 16ths a cycle */
 /*                                         WAVE  SUB   CUT   RESO  ENV   DECAY ACC   GLIDE DRIVE SUS   KEYTRK */
 static const float PRESET[BASS_PRESETS][BS_PARAMS] = {
     /* ACID    */ { 0.00f, 0.15f, 0.30f, 0.70f, 0.60f, 0.35f, 0.60f, 0.35f, 0.25f, 0.00f, 0.30f },
@@ -17,7 +22,31 @@ static const float PRESET[BASS_PRESETS][BS_PARAMS] = {
     /* SUB     */ { 0.00f, 0.90f, 0.12f, 0.10f, 0.15f, 0.60f, 0.20f, 0.30f, 0.15f, 0.80f, 0.60f },
     /* PLUCK   */ { 0.50f, 0.30f, 0.25f, 0.40f, 0.70f, 0.15f, 0.40f, 0.15f, 0.20f, 0.00f, 0.50f },
     /* FAT     */ { 0.70f, 0.50f, 0.40f, 0.50f, 0.45f, 0.50f, 0.50f, 0.30f, 0.60f, 0.60f, 0.40f },
+    /* DUB SUB */ { 0.00f, 0.95f, 0.08f, 0.05f, 0.10f, 0.70f, 0.20f, 0.30f, 0.10f, 0.90f, 0.50f },
+    /* RUBBER  */ { 1.00f, 0.30f, 0.25f, 0.60f, 0.50f, 0.20f, 0.50f, 0.45f, 0.30f, 0.20f, 0.40f },
+    /* STAB    */ { 0.00f, 0.20f, 0.22f, 0.45f, 0.85f, 0.10f, 0.90f, 0.10f, 0.45f, 0.00f, 0.40f },
+    /* TECHNO  */ { 1.00f, 0.40f, 0.15f, 0.30f, 0.30f, 0.55f, 0.30f, 0.20f, 0.35f, 0.50f, 0.40f },
+    /* SCRM303 */ { 0.00f, 0.10f, 0.22f, 0.97f, 0.85f, 0.30f, 0.90f, 0.40f, 0.95f, 0.00f, 0.30f },
+    /* WARM    */ { 0.00f, 0.50f, 0.20f, 0.10f, 0.20f, 0.60f, 0.20f, 0.30f, 0.15f, 0.70f, 0.50f },
+    /* BLIP    */ { 0.50f, 0.10f, 0.50f, 0.50f, 0.70f, 0.14f, 0.70f, 0.05f, 0.40f, 0.15f, 0.80f },
+    /* REESE   */ { 0.00f, 0.40f, 0.30f, 0.15f, 0.10f, 0.70f, 0.20f, 0.30f, 0.30f, 0.90f, 0.40f },
+    /* HOOVER  */ { 0.20f, 0.30f, 0.50f, 0.20f, 0.30f, 0.50f, 0.40f, 0.60f, 0.60f, 0.80f, 0.50f },
+    /* SUPERSW */ { 0.00f, 0.20f, 0.55f, 0.10f, 0.20f, 0.50f, 0.30f, 0.20f, 0.20f, 0.70f, 0.50f },
+    /* WOB 1/4 */ { 0.60f, 0.60f, 0.16f, 0.55f, 0.00f, 0.50f, 0.20f, 0.30f, 0.60f, 1.00f, 0.40f },
+    /* WOB 1/8 */ { 0.60f, 0.60f, 0.16f, 0.55f, 0.00f, 0.50f, 0.20f, 0.30f, 0.60f, 1.00f, 0.40f },
+    /* WOB1/16 */ { 0.60f, 0.60f, 0.16f, 0.55f, 0.00f, 0.50f, 0.20f, 0.30f, 0.60f, 1.00f, 0.40f },
+    /* YOI     */ { 0.00f, 0.30f, 0.18f, 0.85f, 0.20f, 0.50f, 0.40f, 0.30f, 0.70f, 0.90f, 0.40f },
 };
+static const uint16_t PRESET_MOD[BASS_PRESETS] = {
+    0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
+    BASS_MOD(4u, 15u, 0u, 0u),           /* REESE: two saws a little apart, slow beating */
+    BASS_MOD(10u, 12u, 0u, 0u),          /* HOOVER: wider, the glide long */
+    BASS_MOD(13u, 15u, 0u, 0u),          /* SUPERSAW: wide */
+    BASS_MOD(3u, 8u, 2u, 28u), BASS_MOD(3u, 8u, 3u, 28u), BASS_MOD(3u, 8u, 4u, 26u),   /* WOBBLE 1/4, 1/8, 1/16 */
+    BASS_MOD(2u, 10u, 4u, 18u),          /* YOI: the resonance swept fast */
+};
+uint16_t bass_preset_mod(uint32_t i) { return i < BASS_PRESETS ? PRESET_MOD[i] : 0u; }
+float bass_detune_st(uint32_t det) { return (float)(det & 15u) * (0.6f / 15.0f); }
 
 void bass_preset(bass_t *b, uint32_t i)
 {
@@ -78,6 +107,9 @@ static struct {
     /* the voice */
     float ph, sph, note, target, s[4], y4, fenv, aenv, acc;
     uint32_t gate_left, gated, playing, tie;
+    /* MOD (BABSZTYL) */
+    volatile uint32_t mod, step_len, lfo_rst;   /* (lfo_rst: 1 + the sample the LFO starts again at, 0 none) */
+    float pa, pb, lph;                   /* the two detuned saws' phases, the LFO's */
 } B;
 
 static void derive(void)
@@ -104,6 +136,12 @@ void bass_init(void)
     B.y4 = B.fenv = B.aenv = B.acc = 0.0f;
     B.note = B.target = 36.0f;
     B.gate_left = B.gated = B.playing = B.tie = B.off = 0u;
+    B.mod = 0u;
+    B.step_len = 5000u;
+    B.lfo_rst = 0u;
+    B.pa = 0.33f;
+    B.pb = 0.71f;
+    B.lph = 0.0f;
 }
 
 void bass_set(const bass_t *b)
@@ -113,6 +151,12 @@ void bass_set(const bass_t *b)
 }
 
 void bass_gate_off(void) { B.off = 1u; }
+void bass_set_mod(uint32_t mod, uint32_t step_len)
+{
+    B.mod = mod;
+    B.step_len = step_len ? step_len : 1u;
+}
+void bass_lfo_reset(uint32_t at) { B.lfo_rst = at + 1u; }
 
 void bass_panic(void)
 {
@@ -145,6 +189,8 @@ void bass_render(float *out, uint32_t n, const uint16_t *at, const bass_note_t *
     const float *p;
     uint32_t i, k = 0u;
     float wave, sub, cut, reso, envamt, acc_amt, drive, kt, dg, dnorm;
+    float rr, mix2, ldt, ldepth;          /* (MOD: the detune's ratio, OSC 2's level, the LFO's step, its depth) */
+    uint32_t mod = B.mod, lrst = B.lfo_rst;
     if (B.pending) {
         B.set = B.next;
         B.pending = 0u;
@@ -166,6 +212,11 @@ void bass_render(float *out, uint32_t n, const uint16_t *at, const bass_note_t *
     kt = p[BS_KEYTRK];
     dg = 1.0f + drive * 11.0f;
     dnorm = 1.0f / tanh_a(dg * 0.5f + 0.5f);
+    rr = brk_exp2f_c(bass_detune_st(mod) * (1.0f / 12.0f));
+    mix2 = (float)(mod >> 4 & 15u) * (1.0f / 15.0f);
+    ldepth = (float)(mod >> 11 & 31u) * (4.0f / 31.0f);   /* (octaves, 0..4) */
+    ldt = 1.0f / (RATE16[(mod >> 8 & 7u) % BASS_RATES] * (float)B.step_len);
+    B.lfo_rst = 0u;
     for (i = 0; i < n; i++) {
         float hz, dt, saw, sq, t2, osc, fc, g, G, u, x, y, e, lvl;
         uint32_t j;
@@ -207,8 +258,27 @@ void bass_render(float *out, uint32_t n, const uint16_t *at, const bass_note_t *
             t2 -= 1.0f;
         sq = (B.ph < 0.5f ? 1.0f : -1.0f) + blep(B.ph, dt) - blep(t2, dt);
         osc = saw + (sq - saw) * wave;
+        if (mix2 > 0.0f) {               /* (MOD: two saws, one above, one below) */
+            float da = dt * rr, db = dt / rr, sa, sb;
+            B.pa += da;
+            if (B.pa >= 1.0f)
+                B.pa -= 1.0f;
+            B.pb += db;
+            if (B.pb >= 1.0f)
+                B.pb -= 1.0f;
+            sa = 2.0f * B.pa - 1.0f - blep(B.pa, da);
+            sb = 2.0f * B.pb - 1.0f - blep(B.pb, db);
+            osc = osc * (1.0f - 0.45f * mix2) + (sa + sb) * 0.5f * mix2;
+        }
+        if (lrst && i + 1u == lrst)      /* (the LFO from its start: the line's bar) */
+            B.lph = 0.0f;
+        B.lph += ldt;
+        if (B.lph >= 1.0f)
+            B.lph -= 1.0f;
         /* the filter */
         e = B.fenv * (envamt + B.acc * acc_amt * 2.5f);
+        if (ldepth > 0.0f)               /* (the LFO: the cutoff up and down, from where it is) */
+            e += ldepth * (0.5f - 0.5f * brk_sin_turns(B.lph + 0.25f));
         fc = cut * brk_exp2f(e + kt * (B.note - 48.0f) * (1.0f / 12.0f));
         if (fc > 0.42f * (float)BRK_SR)
             fc = 0.42f * (float)BRK_SR;

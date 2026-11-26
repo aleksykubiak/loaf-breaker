@@ -3,7 +3,7 @@
  * pattern's steps and the KICK menu stay where they were reached before (the pattern: PRESETS; the KICK menu, the
  * drums and the break: SEL + EDIT).
  *   BASS SEQ (PG_BSEQ, SEQ): eight lines of two bars. ALGORITHM the line (playing: at the next bar), SELECT the step,
- *     K1 its note, K2 ACCENT / SLIDE, K3 the line's TRANSPOSE, K4 its LEVEL. The keys are a keyboard (F to G, OCT- /
+ *     K1 its note, K2 ACCENT / SLIDE, K3 the line's TRANSPOSE, K4 DEL (a click: the step a rest). The keys are a keyboard (F to G, OCT- /
  *     OCT+ its octave): REC, playing, records them into the line at the nearest 16th (a key held: a long note);
  *     stopped, REC writes them step by step from the step selected. SEL + REC clears the line, SEQ held + white key
  *     1-8 picks a line (from any page: back there after), SEQ held + K1 turns the line a step round, SEL + SEQ copies
@@ -13,16 +13,19 @@
 
 #define BS_KEYS 0x7FFFFFFu               /* the 27 keys' bits: each its semitone from the lowest, an F */
 static int32_t tab(int32_t x, const char *s, int on);   /* (main.c) */
-enum { BT_OSC, BT_FILT, BT_ENV, BT_N, BT_EQ = BT_N, BT_FX, BT_ALL };   /* (EQ, FX: their own pages, PG_KEQ and the
+enum { BT_OSC, BT_FILT, BT_ENV, BT_MOD, BT_N, BT_EQ = BT_N, BT_FX, BT_ALL };   /* (BABSZTYL: MOD, bline.c bl_mod_*) */   /* (EQ, FX: their own pages, PG_KEQ and the
                                           * FX page's BASS FX slots, LOAF BREAKER's KICK EQ and KICK FX) */
-static const char *const BT_NAME[BT_ALL] = {"OSC", "FILTER", "ENV", "EQ", "FX"};
+static const char *const BT_NAME[BT_ALL] = {"OSC", "FILTER", "ENV", "MOD", "EQ", "FX"};
+static const char *const BT_MOD_NAME[4] = {"DETUNE", "OSC 2", "LFO RATE", "LFO DEPTH"};
 static const uint8_t BT_PAR[BT_N][4] = {{BS_WAVE, BS_SUB, BS_DRIVE, 0xFFu},   /* (0xFF: the line's LEVEL) */
                                         {BS_CUTOFF, BS_RESO, BS_ENV, BS_KEYTRK},
-                                        {BS_DECAY, BS_SUSTAIN, BS_ACCENT, BS_GLIDE}};
+                                        {BS_DECAY, BS_SUSTAIN, BS_ACCENT, BS_GLIDE},
+                                        {0xFEu, 0xFEu, 0xFEu, 0xFEu}};   /* (0xFE: MOD's, packed in the line) */
 static const char *const NOTE_NAME[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
 
 static struct {
     uint8_t cur;                         /* SEQ: the step selected, 0..31 */
+    uint8_t stab;                        /* SEQ's tab: 0 the LINE, 1 the GENERATOR (BABSZTYL; SEQ again: the next) */
     uint8_t tab;                         /* EDIT: its part, BT_* */
     uint8_t rec;                         /* REC on (the bass's own: the pattern's REC is HOME's) */
     uint8_t key;                         /* the key sounding, its bit + 1 (0: none) */
@@ -31,7 +34,7 @@ static struct {
     int8_t clip;                         /* SEL + SEQ: the line copied (-1: none) */
     uint8_t seq_down, seq_used, seq_back, seq_from;   /* SEQ held: what it did, where it came from */
     uint32_t steps_seen, frame_t;
-} bs = {0u, 0u, 0u, 0u, 0u, -1, -1, 0u, 0u, 0u, 0u, 0u, 0u};
+} bs = {0u, 0u, 0u, 0u, 0u, 0u, -1, -1, 0u, 0u, 0u, 0u, 0u, 0u};
 
 static uint32_t bs_len(const char *t)   /* (no libc on the FM-1) */
 {
@@ -48,6 +51,36 @@ static void kfx_open(int on);            /* (main.c) */
 static void bs_bank_go(uint32_t b);
 static bl_line_t *bs_line(void) { return bl_at(bls.sel); }
 static void bs_dirty(void) { set_dirty = 1u; }
+/* SEQ › GENERATOR's four (bline.c bl_gen), kept in kx2.rsv[0..4] (KITS' old bytes): GEN_TAG, CORE, VARIATION, ROLL,
+ * FILL; untagged CORE 100 (the line as recorded) */
+#define GEN_TAG 0x6Eu
+static const char *const GEN_NAME[4] = {"CORE", "VARIATION", "ROLL", "FILL"};
+static void bs_gen_push(void)
+{
+    uint32_t i;
+    for (i = 0; i < 4u; i++)
+        bl_gen[i] = kx2.rsv[0] == GEN_TAG ? (uint8_t)(kx2.rsv[1u + i] > 100u ? 100u : kx2.rsv[1u + i])
+                                          : (uint8_t)(i ? 0u : 100u);
+}
+static void bs_gen_turn(uint32_t k, int32_t d)
+{
+    char t[8];
+    int32_t v;
+    if (kx2.rsv[0] != GEN_TAG) {
+        uint32_t i;
+        for (i = 0; i < 4u; i++)
+            kx2.rsv[1u + i] = bl_gen[i];
+        kx2.rsv[0] = GEN_TAG;
+    }
+    v = (int32_t)kx2.rsv[1u + (k & 3u)] + d * 2;
+    kx2.rsv[1u + (k & 3u)] = (uint8_t)(v < 0 ? 0 : v > 100 ? 100 : v);
+    bs_gen_push();
+    set_dirty = 1u;
+    t[0] = 0;
+    int_text(bl_gen[k & 3u], t);
+    text_cat(t, " %");
+    app_say(GEN_NAME[k & 3u], t);
+}
 
 static void note_text(uint32_t n, char *t)   /* 45 -> "A2" */
 {
@@ -268,9 +301,14 @@ static void bs_oct(uint32_t btn, uint32_t bdn)
     ui.redraw |= RG_FOOT;
 }
 
-static float *bs_par(uint32_t i)         /* EDIT's knob i on its part: the setting */
+static float *bs_par(uint32_t i)         /* EDIT's knob i on its part: the setting (MOD: a copy, 0..1, for its bar) */
 {
+    static float modv;
     uint32_t p = BT_PAR[bs.tab % BT_N][i & 3u];
+    if (p == 0xFEu) {
+        modv = (float)bl_mod_get(bs_line(), i) / (float)BL_MOD_MAX[i & 3u];
+        return &modv;
+    }
     return p == 0xFFu ? &bs_line()->snd.volume : &bs_line()->snd.p[p];
 }
 
@@ -337,6 +375,52 @@ static void bs_bank_go(uint32_t b)
 }
 static void bs_bank_turn(int32_t d) { bs_bank_go((bl_bank_sel() + BL_BANKS + (uint32_t)(d > 0 ? 1 : -1)) % BL_BANKS); }
 
+/* SEL + PRESETS on SEQ (BABSZTYL): a built-in sound on the bank's eight lines at once (each line's LEVEL kept; each
+ * line shaped on in EDIT as before), from the line selected's */
+static void bs_bank_preset(int32_t d)
+{
+    uint32_t b = bl_bank_sel(), i, p = (bs_line()->preset + BASS_PRESETS + (uint32_t)(d > 0 ? 1 : -1)) % BASS_PRESETS;
+    char t[12] = "BANK ";
+    for (i = 0; i < BL_N; i++) {
+        bl_preset_put(bl_at(b * BL_N + i), p);
+    }
+    int_text((int32_t)b + 1, t + 5);
+    text_cat(t, " SOUND");
+    app_say(t, BASS_PRESET_NAME[p]);
+    if (bl_play / BL_N == b)
+        bl_sound_changed();
+    bs_dirty();
+    ui.redraw |= RG_HEAD | RG_BLOCKS | RG_FOOT;
+}
+
+/* DEL: the step s a rest; a note tied over several steps (SLIDE into the same note) all of it; the step before it
+ * sliding into it no more. 0: nothing there */
+static int bs_del(bl_line_t *l, uint32_t s)
+{
+    uint32_t a = s % BL_STEPS, n = 0u, note = l->st[a].note, pv;
+    if (!note)
+        return 0;
+    while (n < BL_STEPS) {               /* (back to the note's first step) */
+        pv = (a + BL_STEPS - 1u) % BL_STEPS;
+        if (!(l->st[pv].fl & BLF_SLD) || l->st[pv].note != note || pv == s % BL_STEPS)
+            break;
+        a = pv;
+        n++;
+    }
+    pv = (a + BL_STEPS - 1u) % BL_STEPS;
+    l->st[pv].fl &= (uint8_t)~BLF_SLD;   /* (the step before: no slide into a rest) */
+    for (n = 0; n < BL_STEPS; n++) {     /* (on through its tied steps) */
+        uint32_t i = (a + n) % BL_STEPS, more = l->st[i].fl & BLF_SLD && l->st[(i + 1u) % BL_STEPS].note == note;
+        l->st[i].note = 0u;
+        l->st[i].fl = 0u;
+        if (!more)
+            break;
+    }
+    bs_dirty();
+    app_say("DEL", "STEP CLEARED");
+    return 1;
+}
+
 /* a knob on the two pages (input): 1 taken (SEL held: SEL's own, everywhere) */
 static int bs_enc(int k, int32_t d, uint32_t btn)
 {
@@ -355,6 +439,8 @@ static int bs_enc(int k, int32_t d, uint32_t btn)
         }
         if (k == EN_SELECT)
             bs.cur = (uint8_t)((bs.cur + BL_STEPS * 4u + (uint32_t)d) % BL_STEPS);
+        else if (bs.stab && k >= EN_K1 && k <= EN_K4)   /* (GENERATOR: CORE, VARIATION, ROLL, FILL) */
+            bs_gen_turn((uint32_t)(k - EN_K1), d);
         else if (k == EN_K1) {           /* the step's note: down past the lowest, a rest */
             bl_step_t *s = &l->st[bs.cur];
             int32_t v = s->note ? (int32_t)s->note + d : (d > 0 ? 36 : 0);
@@ -375,11 +461,10 @@ static int bs_enc(int k, int32_t d, uint32_t btn)
             int32_t v = l->trans + d;
             l->trans = (int8_t)(v < -12 ? -12 : v > 12 ? 12 : v);
             bs_dirty();
-        } else if (k == EN_K4) {
-            l->snd.volume = knob_f(l->snd.volume, d, 0.02f, 0.0f, 1.0f);
-            if (bl_play == bls.sel)
-                bl_sound_changed();
-            bs_dirty();
+        } else if (k == EN_K4) {         /* DEL (BABSZTYL: LEVEL before, now EDIT › OSC's K4 alone): a click, the
+                                          * step under the cursor a rest, a long note (its tied steps) whole */
+            if (!bs_del(l, bs.cur))
+                app_say("DEL", "NOTHING HERE");
         } else
             return 0;                    /* (PRESETS: the pattern, as everywhere) */
         ui.redraw |= RG_BLOCKS | RG_FOOT;
@@ -388,6 +473,11 @@ static int bs_enc(int k, int32_t d, uint32_t btn)
     if (k == EN_SELECT) {                /* EDIT: its parts (EQ, FX: their pages) */
         bs_part_turn(d);
         return 1;
+    } else if (k >= EN_K1 && k <= EN_K4 && bs.tab == BT_MOD) {   /* (MOD: a click a level) */
+        uint32_t q = (uint32_t)(k - EN_K1);
+        int32_t v = (int32_t)bl_mod_get(l, q) + (d > 0 ? 1 : -1);
+        bl_mod_set(l, q, (uint32_t)(v < 0 ? 0 : v));
+        bs_dirty();
     } else if (k >= EN_K1 && k <= EN_K4) {
         float *p = bs_par((uint32_t)(k - EN_K1));
         *p = knob_f(*p, d, 0.01f, 0.0f, 1.0f);
@@ -395,8 +485,7 @@ static int bs_enc(int k, int32_t d, uint32_t btn)
             bl_sound_changed();
         bs_dirty();
     } else if (k == EN_PRESET) {         /* a built-in sound (the line's LEVEL kept) */
-        l->preset = (uint8_t)((l->preset + BASS_PRESETS + (uint32_t)(d > 0 ? 1 : -1)) % BASS_PRESETS);
-        bass_preset(&l->snd, l->preset);
+        bl_preset_put(l, (l->preset + BASS_PRESETS + (uint32_t)(d > 0 ? 1 : -1)) % BASS_PRESETS);
         app_say("BASS SOUND", BASS_PRESET_NAME[l->preset]);
         if (bl_play == bls.sel)
             bl_sound_changed();
@@ -433,12 +522,12 @@ static void bs_poll(uint32_t now)
 /* the foot's names and values */
 static const char *bs_kname(int i)
 {
-    static const char *const SEQ_N[4] = {"NOTE", "ACC / SLD", "TRANSPOSE", "LEVEL"};
+    static const char *const SEQ_N[4] = {"NOTE", "ACC / SLD", "TRANSPOSE", "DEL"};
     if (ui.page == PG_BSEQ)
-        return SEQ_N[i & 3];
+        return bs.stab ? GEN_NAME[i & 3] : SEQ_N[i & 3];
     {
         uint32_t p = BT_PAR[bs.tab % BT_N][i & 3];
-        return p == 0xFFu ? "LEVEL" : BASS_PARAM_NAME[p];
+        return p == 0xFEu ? BT_MOD_NAME[i & 3] : p == 0xFFu ? "LEVEL" : BASS_PARAM_NAME[p];
     }
 }
 
@@ -447,6 +536,11 @@ static void bs_value(int i, char *t)
     const bl_line_t *l = bs_line();
     static const char *const FL[4] = {"-", "ACCENT", "SLIDE", "ACC SLD"};
     t[0] = 0;
+    if (ui.page == PG_BSEQ && bs.stab) {
+        int_text(bl_gen[i & 3], t);
+        text_cat(t, " %");
+        return;
+    }
     if (ui.page == PG_BSEQ) {
         if (i == 0)
             note_text(l->st[bs.cur].note ? bl_note_of(l, bs.cur) : 0u, t);
@@ -458,13 +552,24 @@ static void bs_value(int i, char *t)
             int_text(l->trans, t + bs_len(t));
             text_cat(t, " ST");
         } else
-            pct_text(l->snd.volume, t);
+            text_cat(t, l->st[bs.cur].note ? "TURN" : "-");
         return;
     }
     {
         uint32_t p = BT_PAR[bs.tab % BT_N][i & 3];
         float v = *bs_par((uint32_t)i);
-        if (p == BS_CUTOFF)
+        if (p == 0xFEu) {                /* (MOD) */
+            uint32_t q = bl_mod_get(bs_line(), (uint32_t)i);
+            if (i == 2)
+                text_cat(t, BASS_RATE_NAME[q % BASS_RATES]);
+            else if (!q)
+                text_cat(t, "OFF");
+            else if (i == 0) {
+                int_text((int32_t)(bass_detune_st(q) * 100.0f + 0.5f), t);
+                text_cat(t, " CT");
+            } else
+                pct_text(v, t);
+        } else if (p == BS_CUTOFF)
             hz_text(bass_cutoff_hz(v), t);
         else if (p == BS_DECAY || p == BS_GLIDE) {
             int_text((int32_t)(p == BS_DECAY ? bass_decay_ms(v) : bass_glide_ms(v)), t);
@@ -476,11 +581,16 @@ static void bs_value(int i, char *t)
     }
 }
 
-static float bs_norm(int i) { return ui.page == PG_BEDIT ? *bs_par((uint32_t)i) : -1.0f; }
+static float bs_norm(int i)
+{
+    return ui.page == PG_BEDIT ? *bs_par((uint32_t)i) : ui.page == PG_BSEQ && bs.stab ? (float)bl_gen[i & 3] * 0.01f : -1.0f;
+}
 
 static void bs_say(char *t)              /* the header's part */
 {
     bs_line_text(bls.sel, t + bs_len(t));
+    if (ui.page == PG_BSEQ && bs.stab)
+        text_cat(t, " GEN");
     if (ui.page == PG_BEDIT) {
         text_cat(t, " ");
         text_cat(t, BT_NAME[bs.tab % BT_ALL]);
@@ -499,7 +609,8 @@ static void bs_tabs(int32_t x)           /* the tabs under the header */
         note_text(12u * (bls.oct + 1u) + 5u, t);
         char bk[8] = "BANK ";
         int_text((int32_t)bl_bank_sel() + 1, bk + 5);
-        x = tab(x, bk, 1);
+        x = tab(x, bk, !bs.stab);
+        x = tab(x, "GENERATOR", bs.stab);
         x = tab(x, bs.rec ? "REC ON" : "REC", bs.rec);
         cv_text(236 - text_w(&FONT_T, t) - text_w(&FONT_T, "KEYS "), 1, &FONT_T, "KEYS ", C_DIM);
         cv_text(236 - text_w(&FONT_T, t), 1, &FONT_T, t, C_GRAY);
@@ -561,15 +672,21 @@ static void bs_seq_band(int32_t top)
         for (i = 0; i < 16u; i++) {
             uint32_t s = b * 16u + i, n = l->st[s].note ? bl_note_of(l, s) : 0u;
             int32_t x = 8 + (int32_t)i * 14;
+            bl_gen_t gv = {0u, 0u};
+            if (bs.stab)                 /* (GENERATOR: the line as it will play) */
+                n = bl_gen_step(l, bls.sel, s, &gv);
             uint16_t g = playing && bl_pos == s ? RGB(90, 60, 40) : i % 4u == 0u ? RGB(38, 38, 48) : C_BLOCK;
             cv_rect(x, y0, 13, h, g);
             if (n) {
-                int32_t y = y0 + h - 6 - (int32_t)((n - lo) * (uint32_t)(h - 8) / (hi - lo));
-                uint16_t c = l->st[s].fl & BLF_ACC ? C_WHITE : C_HI;
+                int32_t y = y0 + h - 6 - ((int32_t)n - (int32_t)lo) * (h - 8) / (int32_t)(hi - lo);
+                uint16_t c = gv.fl & BLG_VAR ? C_AMB : l->st[s].fl & BLF_ACC ? C_WHITE : C_HI;
                 uint32_t nx = (s + 1u) % BL_STEPS;
-                int tie = l->st[s].fl & BLF_SLD && l->st[nx].note == l->st[s].note && i < 15u;
-                cv_rect(x + 1, y, tie ? 14 : 11, 5, c);
-                if (l->st[s].fl & BLF_SLD && l->st[nx].note && !tie && i < 15u) {   /* (a slide: its glide drawn) */
+                int tie = !bs.stab && l->st[s].fl & BLF_SLD && l->st[nx].note == l->st[s].note && i < 15u;
+                y = y < y0 + 1 ? y0 + 1 : y > y0 + h - 6 ? y0 + h - 6 : y;   /* (an octave past the line's: at its edge) */
+                cv_rect(x + 1, y, tie ? 14 : gv.fl & BLG_RAT ? 5 : 11, 5, c);
+                if (gv.fl & BLG_RAT)      /* (a ratchet: two) */
+                    cv_rect(x + 7, y, 5, 5, c);
+                if (!bs.stab && l->st[s].fl & BLF_SLD && l->st[nx].note && !tie && i < 15u) {   /* (a slide: its glide drawn) */
                     uint32_t n2 = bl_note_of(l, nx);
                     int32_t y2 = y0 + h - 6 - (int32_t)((n2 - lo) * (uint32_t)(h - 8) / (hi - lo));
                     cv_line(x + 11, y + 2, x + 15, y2 + 2, C_AMB);
@@ -605,8 +722,10 @@ static void bs_seq_band(int32_t top)
         } else if (bs.rec)
             cv_text(4, y, &FONT_XS, st.playing ? "REC: PLAY IN TIME, HOLD A KEY: A LONG NOTE"
                                                : "REC: EACH KEY WRITES A STEP, THEN NEXT", C_AMB);
+        else if (bs.stab)
+            cv_text(4, y, &FONT_XS, "AS IT PLAYS: AMBER CHANGED   SEQ: HOME", C_DIM);
         else
-            cv_text(4, y, &FONT_XS, "KEYS PLAY   REC RECORDS   SEQ + KEY 1-8", C_DIM);
+            cv_text(4, y, &FONT_XS, "KEYS PLAY  SEQ: GENERATOR  SEQ + KEY 1-8", C_DIM);
     }
 }
 
@@ -651,7 +770,7 @@ static void bs_edit_band(int32_t top)
         cv_rect(x + 4, y + 44, 48, 3, RGB(50, 50, 60));
         cv_rect(x + 4, y + 44, (int32_t)(v * 48.0f + 0.5f), 3, C_HI);
     }
-    cv_text(4, 166 - top, &FONT_XS, "SELECT: OSC FILTER ENV  PRESETS: SOUND", C_DIM);
+    cv_text(4, 166 - top, &FONT_XS, "SELECT: OSC FILTER ENV MOD  PRESETS: SOUND", C_DIM);
     cv_text(4, 178 - top, &FONT_XS, "ALGORITHM: THE LINE   THE KEYS PLAY IT", C_DIM);
 }
 
@@ -675,7 +794,29 @@ static int bs_expect(const char *what, int *got)
 {
     const bl_line_t *l = bs_line();
     uint32_t i, n = 0u;
-    if (!strcmp(what, "bsel"))
+    if (!strcmp(what, "bstab"))          /* (BABSZTYL) SEQ's tab: 0 LINE, 1 GENERATOR */
+        *got = bs.stab;
+    else if (!strcmp(what, "bcore"))
+        *got = bl_gen[0];
+    else if (!strcmp(what, "bvar"))
+        *got = bl_gen[1];
+    else if (!strcmp(what, "bgroll"))    /* (broll: the BUILD's) */
+        *got = bl_gen[2];
+    else if (!strcmp(what, "bfill"))
+        *got = bl_gen[3];
+    else if (!strcmp(what, "bmod"))      /* the line's MOD, packed */
+        *got = (int)bl_mod(bs_line());
+    else if (!strcmp(what, "kbas"))      /* KILL BASS on */
+        *got = kbas_hold;
+    else if (!strcmp(what, "bgenvar")) { /* the line's steps the GENERATOR changes, as it will play */
+        uint32_t i, c = 0u;
+        for (i = 0; i < BL_STEPS; i++) {
+            bl_gen_t g;
+            uint32_t n = bl_gen_step(bs_line(), bls.sel, i, &g);
+            c += (g.fl & (BLG_VAR | BLG_RAT)) || (!n && bs_line()->st[i].note) ? 1u : 0u;
+        }
+        *got = (int)c;
+    } else if (!strcmp(what, "bsel"))
         *got = bls.sel;
     else if (!strcmp(what, "bplay"))
         *got = bl_play;

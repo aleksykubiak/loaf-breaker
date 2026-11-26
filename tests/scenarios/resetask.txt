@@ -28,7 +28,7 @@ expect lobo 1
 expect tut 253
 wait 3500
 expect lobo 0
-wait 600
+wait 1100   # (BABSZTYL: the splash 2 s)
 shot ra_intro.png
 tap HOME
 wait 600

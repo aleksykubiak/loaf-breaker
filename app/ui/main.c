@@ -507,21 +507,36 @@ static void input(void)
         app_say("CHAOS", heard ? "OFF" : "ON");
         ui.redraw |= RG_FOOT | RG_BLOCKS;
     }
-    if (kdn & PAD_BIT(BKF_KBR)) {        /* LOAF BREAKER (0.9.58, FLEXOR): KILL BREAK: the break out (FADE, CUT, or at the
-                                          * bar's end into the reverb), back when let go; LATCH: a press out, the next back */
+    if (kdn & (PAD_BIT(BKF_KBR) | PAD_BIT(BKF_KBS) | PAD_BIT(BKF_KBB))) {   /* LOAF BREAKER (0.9.58, FLEXOR): KILL BREAK: the
+                                          * break out (FADE, CUT, or at the bar's end into the reverb), back when let
+                                          * go; LATCH: a press out, the next back. BABSZTYL: KILL BASS the bass, KILL
+                                          * BOTH both, the same settings */
+        uint32_t f = kdn & PAD_BIT(BKF_KBR) ? BKF_KBR : kdn & PAD_BIT(BKF_KBS) ? BKF_KBS : BKF_KBB;
+        const char *who = f == BKF_KBR ? "KILL BREAK" : f == BKF_KBS ? "KILL BASS" : "KILL BOTH";
+        uint8_t was = f == BKF_KBR ? kbrk_hold : f == BKF_KBS ? kbas_hold : (uint8_t)(kbrk_hold && kbas_hold), now;
         kbrk_mode = (uint8_t)kb_mode();
         kbrk_t16 = KB_T16[kb_time()];
         kbrk_rev = (uint8_t)kb_rev();
         kbrk_echo = (uint8_t)(kb_mode() == KB_BAR ? kb_echo() : 0u);
-        kbrk_hold = kb_latch() ? (uint8_t)!kbrk_hold : 1u;
-        ui.pad_focus = (int8_t)BKF_KBR;
+        now = kb_latch() ? (uint8_t)!was : 1u;
+        if (f != BKF_KBS)
+            kbrk_hold = now;
+        if (f != BKF_KBR)
+            kbas_hold = now;
+        ui.pad_focus = (int8_t)f;
         ui.pad_since = plat_ms();
-        app_say("KILL BREAK", kbrk_hold ? (kb_mode() == KB_BAR ? "AT THE BAR'S END" : kb_mode() == KB_ENDF ? "AT THE LOOP'S END" : "OUT") : "BACK");
-        ui.redraw |= RG_FOOT;
-    } else if (!(keys & PAD_BIT(BKF_KBR)) && kbrk_hold && !kb_latch()) {
-        kbrk_hold = 0u;                  /* (let go, no LATCH: back) */
-        app_say("KILL BREAK", "BACK");
-        ui.redraw |= RG_FOOT;
+        app_say(who, now ? (kb_mode() == KB_BAR ? "AT THE BAR'S END" : kb_mode() == KB_ENDF ? "AT THE LOOP'S END" : "OUT") : "BACK");
+        ui.redraw |= RG_FOOT | RG_BLOCKS;
+    } else if (!kb_latch() && (kbrk_hold || kbas_hold)) {   /* (let go, no LATCH: back) */
+        int kbr = (keys & (PAD_BIT(BKF_KBR) | PAD_BIT(BKF_KBB))) != 0u, kbs = (keys & (PAD_BIT(BKF_KBS) | PAD_BIT(BKF_KBB))) != 0u;
+        if ((kbrk_hold && !kbr) || (kbas_hold && !kbs)) {
+            if (!kbr)
+                kbrk_hold = 0u;
+            if (!kbs)
+                kbas_hold = 0u;
+            app_say("KILL", "BACK");
+            ui.redraw |= RG_FOOT | RG_BLOCKS;
+        }
     }
     if (kdn & PAD_BIT(BKF_DST)) {        /* LOAF BREAKER: DST, a switch: the kick's DISTO used or not, its amount never
                                           * touched (0.265, FLEXOR: no more 50 % from nothing) */
@@ -724,6 +739,7 @@ static void input(void)
         bs.seq_from = ui.page;
         if (ui.page != PG_BSEQ) {
             slices_let_go(keys);
+            bs.stab = 0u;                /* (BABSZTYL: the LINE first) */
             bs_open(PG_BSEQ);
         }
     }
@@ -733,8 +749,14 @@ static void input(void)
             ui.page = bs.seq_from;
             ui.redraw |= RG_HEAD | RG_WAVE | RG_BLOCKS | RG_FOOT;
             page_say();
-        } else if (bs.seq_back && !bs.seq_used)
-            home_back();
+        } else if (bs.seq_back && !bs.seq_used) {
+            if (!bs.stab) {              /* (BABSZTYL: SEQ again, the GENERATOR; then HOME) */
+                bs.stab = 1u;
+                ui.redraw |= RG_HEAD | RG_BLOCKS | RG_FOOT;
+                page_say();
+            } else
+                home_back();
+        }
     }
     if (bdn & 1u << B_REC && bs_page()) {   /* the BASS's: REC records into the line; SEL + REC clears it */
         if (btn & 1u << B_SEL) {
@@ -1052,7 +1074,10 @@ static void input(void)
             fx_type_turn(d);             /* (the BASS's FX: PRESETS its effect, as the FX page's) */
         else if (k == EN_PRESET && btn & 1u << B_SEL) {   /* SEL + PRESETS, on any page: the bass's BANK (LOAF BREAKER:
                                           * the kick, KICK 1-20; the pattern: PRESETS alone) */
-            bs_bank_turn(d);
+            if (ui.page == PG_BSEQ)      /* (BABSZTYL: on SEQ, a sound on the whole bank; the bank: SEQ + a black key) */
+                bs_bank_preset(d);
+            else
+                bs_bank_turn(d);
             ui.redraw |= RG_FOOT;
         } else if (k == EN_PRESET && ui.page == PG_FX)
             fx_type_turn(d);             /* the focused slot's effect (LOAF BREAKER: BEGINNER, a whole scene) */
@@ -1708,6 +1733,7 @@ static void draw_foot(const brk_status_t *st)
 
 void app_ui_init(void)
 {
+    bs_gen_push();                       /* (BABSZTYL: SEQ › GENERATOR's, saved) */
     flexor_lay_fix(0);                   /* (0.9.58: FLEXOR LAYOUT's key 5 RISE, once) */
     ui.blocks = (uint8_t)(set.bkeys.bk[BK_VIEW] & 1u);   /* (0.9.2: HOME's VIEW as it was left) */
 #if CH_LOGO
@@ -1765,13 +1791,12 @@ void app_frame(void)
     }
     break_poll();
     if (splash_t) {                      /* LOAF BREAKER: the splash 1.5 s, then the start screen from its start */
-        if (now - splash_t < 1500u) {
-            static uint32_t gl_drawn;    /* (the glitch, settling in the first 700 ms, a frame each 40 ms) */
-            if (now - splash_t < 760u && now - gl_drawn >= 40u) {
-                gl_drawn = now;
-                splash_glitch(now - splash_t);
-            } else if (now - splash_t >= 760u)
-                splash_bar(now - splash_t);   /* (BABSZTYL: its BOOTING bar filling, its rows alone) */
+        if (now - splash_t < SPLASH_HOLD) {
+            static uint32_t z_drawn;     /* (BABSZTYL: the zoom, a frame each 80 ms) */
+            if (now - z_drawn >= 80u) {
+                z_drawn = now;
+                splash_zoom(now - splash_t);
+            }
             ui.touched = 0u;
             return;
         }

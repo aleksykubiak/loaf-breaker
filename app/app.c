@@ -229,14 +229,15 @@ static settings_t set;
  * back), then ARP (an OVERLAY effect), KIL (the sequencer's kicks quiet), DST (the kick's DISTO), SUB (its SUB FX on / off: 0.9.43, FLEXOR).
  * A layout: the function of each key, left to right. Presets: CHOPPAH (CHOPPAH's keys; BEGINNER's only), FLEXOR LAYOUT
  * (LOAF BREAKER's until 0.244), CUSTOM (each key its own: ARP › BLACK KEYS) */
-enum { BKF_ARP = BRK_NPADS, BKF_KIL, BKF_DST, BKF_SUB, BKF_DRV, BKF_X2, BKF_X4, BKF_TRI, BKF_SDR, BKF_KBR, BKF_CHS, BKF_N };   /* (0.9.55: X4, TRI; 0.9.57 SDR, SUB DRIVE on / off again;
+enum { BKF_ARP = BRK_NPADS, BKF_KIL, BKF_DST, BKF_SUB, BKF_DRV, BKF_X2, BKF_X4, BKF_TRI, BKF_SDR, BKF_KBR, BKF_CHS, BKF_KBS, BKF_KBB, BKF_N };   /* (BABSZTYL: KBS KILL BASS, KBB KILL BOTH: KILL BREAK's on the bass, on both) */   /* (0.9.55: X4, TRI; 0.9.57 SDR, SUB DRIVE on / off again;
                                           * 0.9.58 KBR, KILL BREAK; 0.9.76 CHS, CHAOS on / off) */   /* (BKF_DRV: the kick's DRIVE, 0.9.43;
                                           * BKF_X2: the kicks doubled, 0.9.48) */
 enum { BKP_CHOPPAH, BKP_FLEXOR, BKP_CUSTOM, BKP_N };
 #define BK_TAG 0xB4u
 #define BK_VIEW 14u                      /* (bk[14]: HOME's VIEW, 0 the waveform, 1 the slices, 0.9.2) */
 #define BK_BHALF 13u                     /* (bk[13]: BREAK TIME, 0 NORMAL, 1 HALF: the break at half the tempo, 0.256) */
-static const uint8_t BK_LAY[2][11] = {{PAD_ROLL8, PAD_ROLL16, PAD_ROLL32, PAD_REVERSE, PAD_FREEZE, PAD_HALF,
+static const uint8_t BK_LAY[2][11] = {{BKF_KBR, BKF_KBS, PAD_ROLL32,   /* (BABSZTYL: KILL BREAK, KILL BASS first, R8 R16 gone) */
+                                       PAD_REVERSE, PAD_FREEZE, PAD_HALF,
                                        PAD_TAPESTOP, PAD_GATE, PAD_RANDOM, PAD_FILTER, PAD_DUB},
                                       {PAD_ROLL8, PAD_ROLL16, PAD_ROLL32, BKF_ARP, BKF_ARP, BKF_TRI,
                                        BKF_X4, BKF_X2, BKF_SUB, BKF_DST, BKF_KIL}};   /* (FLEXOR LAYOUT, 0.9.58, FLEXOR (0.9.61:
@@ -583,7 +584,8 @@ enum { KB_FADE, KB_CUT, KB_BAR, KB_ENDF, KB_N };   /* (0.9.60, FLEXOR: END FADE,
                                           * loop has ended) */
 #define KB_TIMES 6u
 static const uint8_t KB_T16[KB_TIMES] = {1u, 2u, 4u, 8u, 16u, 32u};
-static uint32_t kb_cfg(void) { return (kx2.rsv[KB_RSV] & 0xC0u) == KB_TAG ? kx2.rsv[KB_RSV] & 0x3Fu : 2u << 3; }
+static uint32_t kb_cfg(void) { return (kx2.rsv[KB_RSV] & 0xC0u) == KB_TAG ? kx2.rsv[KB_RSV] & 0x3Fu : 2u << 3 | 4u; }
+                                          /* (BABSZTYL: untagged, LATCH on: its first two black keys) */
 static uint32_t kb_mode(void) { return kb_cfg() & 3u ? (kb_cfg() & 3u) % KB_N : KB_FADE; }
 static uint32_t kb_latch(void) { return kb_cfg() >> 2 & 1u; }
 static uint32_t kb_time(void) { return (kb_cfg() >> 3 & 7u) % KB_TIMES; }
@@ -1129,6 +1131,7 @@ static volatile int16_t kscope[KSC_W];
 static volatile uint32_t kscope_hit;
 static volatile uint8_t kick_hold;       /* LOAF BREAKER: KIL (the tenth black key) held: the sequencer's kicks quiet */
 static volatile float kbrk_g = 1.0f;     /* (0.9.58: KILL BREAK's gain on the break now, the render's) */
+static volatile uint8_t kbas_hold;       /* (BABSZTYL: KILL BASS / KILL BOTH: the bass out, as KILL BREAK the break) */
 static volatile uint8_t kbrk_hold, kbrk_mode, kbrk_t16, kbrk_rev, kbrk_echo;   /* (0.9.58: KILL BREAK on, its MODE, its fade in
                                           * 16ths, its REVERB %: the main loop's, for the render) */
 static volatile uint8_t kick_x2;         /* LOAF BREAKER (0.9.48, FLEXOR): bit 0 X2 on: the kicks doubled, a kick on every odd
@@ -2068,6 +2071,55 @@ static float meter(const float *x, uint32_t n, float last)
     return pk > last ? pk : last;
 }
 
+/* KILL BREAK's gain on one bus (the render's): x out as kbrk_mode says (FADE, CUT, BAR END, END FADE), back in ~2 ms;
+ * BAR END: its last 8th into the reverb (and the echo). own: the throws echo / verb are x's own (the break's), down
+ * with it; else (BABSZTYL: the bass) only thrown into */
+typedef struct { float g; int32_t cut, step; uint8_t done, end; } kill_t;
+static uint32_t kill_tail;               /* (blocks the reverb's tail still rings, the plate alone) */
+static void kill_run(kill_t *k, int hold, float *x, float *echo, float *verb, int own, uint32_t m, const brk_status_t *st)
+{
+    uint32_t i, mode = kbrk_mode;
+    float kg = k->g;
+    float sp16 = (float)BRK_SR * 15.0f / brk_get_tempo(), fstep = 1.0f / ((float)(kbrk_t16 ? kbrk_t16 : 1u) * sp16);
+    int send = hold && mode == KB_BAR && !k->done && st->playing && st->bar16 >= 14;
+    if (!hold)
+        k->done = k->end = 0u;
+    if (hold && mode == KB_BAR && !st->playing)
+        k->done = 1u;
+    if (hold && mode == KB_ENDF && (!st->playing || (k->step >= 0 && st->step >= 0 && st->step % 32 < k->step % 32)))
+        k->end = 1u;                     /* (END FADE: the break round to its start, or stopped: the fade from here) */
+    k->step = st->playing ? st->step : -1;
+    if (send)
+        kill_tail = (uint32_t)(8.0f * (float)BRK_SR / (float)APP_BLOCK);   /* (8 s) */
+    for (i = 0; i < m; i++) {
+        if (send) {                      /* (its last 8th thrown into the reverb before the cut, and the echo, 0.9.60) */
+            verb[i] += x[i] * (float)kbrk_rev * 0.015f;
+            if (kbrk_echo)
+                echo[i] += x[i] * 0.9f;
+        }
+        if (k->cut >= 0 && (int32_t)i == k->cut && hold && mode == KB_BAR)
+            k->done = 1u;
+        if (!hold)
+            kg += (1.0f - kg) * 0.01f;   /* (back: in ~2 ms) */
+        else if (mode == KB_FADE || (mode == KB_ENDF && k->end))
+            kg = kg > fstep ? kg - fstep : 0.0f;
+        else if (mode == KB_CUT || k->done)
+            kg *= 0.97f;                 /* (out in ~1.5 ms: no click) */
+        x[i] *= kg;
+        if (own && !send) {
+            echo[i] *= kg;
+            verb[i] *= kg;
+        }
+    }
+    k->g = kg;
+    k->cut = -1;                         /* (the next block: where its bar ends, if it does) */
+    if (hold && mode == KB_BAR && !k->done && st->playing && st->bar16 == 15) {
+        float rem = (1.0f - st->phase) * sp16;
+        if (rem < (float)APP_BLOCK)
+            k->cut = (int32_t)rem;
+    }
+}
+
 void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
 {
     /* (LOAF BREAKER: the block's buffers in the pool, 10 KB of RAM freed: the pool is RAM as fast) */
@@ -2114,56 +2166,9 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
         }
         {                                /* LOAF BREAKER (0.9.58, FLEXOR): KILL BREAK: the break (and its throws) out,
                                           * faded, cut, or cut at the bar's end with its last 8th into the reverb */
-            float kg = kbrk_g;
-            static int32_t kcut = -1;    /* (BAR END: where in this block the bar ends, -1 not in it) */
-            static uint8_t kdone;        /* (BAR END: cut) */
-            static uint32_t ktail;       /* (blocks the reverb's tail still rings, the plate alone) */
-            static uint8_t kend;         /* (END FADE: the break's loop has ended, the fade begun) */
-            static int32_t kstep = -1;   /* (END FADE: the step the block before ended on) */
-            float sp16 = (float)BRK_SR * 15.0f / brk_get_tempo(), fstep = 1.0f / ((float)(kbrk_t16 ? kbrk_t16 : 1u) * sp16);
-            uint32_t mode = kbrk_mode;
-            int send = kbrk_hold && mode == KB_BAR && !kdone && st.playing && st.bar16 >= 14;
-            if (!kbrk_hold)
-                kdone = kend = 0u;
-            if (kbrk_hold && mode == KB_BAR && !st.playing)
-                kdone = 1u;
-            if (kbrk_hold && mode == KB_ENDF && (!st.playing || (kstep >= 0 && st.step >= 0 &&
-                                                                 st.step % 32 < kstep % 32)))
-                kend = 1u;               /* (END FADE: the break round to its start, or stopped: the fade from here) */
-            kstep = st.playing ? st.step : -1;
-            if (send)
-                ktail = (uint32_t)(8.0f * (float)BRK_SR / (float)APP_BLOCK);   /* (8 s) */
-            for (i = 0; i < m; i++) {
-                if (send) {              /* (its last 8th thrown into the reverb before the cut, and the echo, 0.9.60) */
-                    verb[i] += mono[i] * (float)kbrk_rev * 0.015f;
-                    if (kbrk_echo)
-                        echo[i] += mono[i] * 0.9f;
-                }
-                if (kcut >= 0 && (int32_t)i == kcut && kbrk_hold && mode == KB_BAR)
-                    kdone = 1u;
-                if (!kbrk_hold)
-                    kg += (1.0f - kg) * 0.01f;   /* (back: in ~2 ms) */
-                else if (mode == KB_FADE || (mode == KB_ENDF && kend))
-                    kg = kg > fstep ? kg - fstep : 0.0f;
-                else if (mode == KB_CUT || kdone)
-                    kg *= 0.97f;         /* (out in ~1.5 ms: no click) */
-                mono[i] *= kg;
-                if (!send) {
-                    echo[i] *= kg;
-                    verb[i] *= kg;
-                }
-            }
-            kbrk_g = kg;
-            kcut = -1;                   /* (the next block: where its bar ends, if it does) */
-            if (kbrk_hold && mode == KB_BAR && !kdone && st.playing && st.bar16 == 15) {
-                float rem = (1.0f - st.phase) * sp16;
-                if (rem < (float)APP_BLOCK)
-                    kcut = (int32_t)rem;
-            }
-            brk_fx_tail(ktail > 0u);
-            brk_fx_kill_echo(ktail && kbrk_echo ? kbrk_echo : 0u);
-            if (ktail)
-                ktail--;
+            static kill_t kb = {1.0f, -1, -1, 0u, 0u};
+            kill_run(&kb, kbrk_hold, mono, echo, verb, 1, m, &st);
+            kbrk_g = kb.g;
             meter_brk = meter(mono, m, meter_brk);
         }
         if (set.clk_out) {               /* clock out: each tick due as its sample plays (a block from now) */
@@ -2329,6 +2334,11 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             }
             brk_fx_kick_eq(kick, m);    /* the BASS's EQ (LOAF BREAKER: HOME's KICK EQ) */
             brk_fx_kick(kick, m);        /* and its FX (the KICK FX) */
+            {                            /* BABSZTYL: KILL BASS / KILL BOTH: the bass out as KILL BREAK the break, its
+                                          * BAR END into the break's echo and reverb */
+                static kill_t kbs = {1.0f, -1, -1, 0u, 0u};
+                kill_run(&kbs, kbas_hold, kick, echo, verb, 0, m, &st);
+            }
             for (i = 0; i < m; i++)
                 perc[i] = 0.0f;          /* (the drums: gone; their bus silent) */
             if (set.duck) {              /* LOAF BREAKER (crossbreed): DUCK: the break (and its throws; DRUMS: the
@@ -2389,6 +2399,10 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
                 }
             }
         }
+        brk_fx_tail(kill_tail > 0u);     /* (KILL BREAK / BASS's BAR END: the plate's tail, and the echo's) */
+        brk_fx_kill_echo(kill_tail && kbrk_echo ? kbrk_echo : 0u);
+        if (kill_tail)
+            kill_tail--;
         /* the break through the DJ filter, the drums joining it into the chain (or around it) */
         {
             const float *drums = kick_dry ? perc : kick;   /* (the kick apart: the snare and the hat alone here) */

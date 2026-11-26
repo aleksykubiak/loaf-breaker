@@ -156,6 +156,29 @@ static void bk_value(int i, char *t)
     else if (ui.bk_sel < 11u && bk_fn(ui.bk_sel) == BKF_ARP)  /* (0.9.45: K4, an ARP key's own effect) */
         text_cat(t, OVL_NAME[arpk_fx(ui.bk_sel)]);
 }
+/* BABSZTYL: the functions' round on K3 (BKF_* in their saved numbers, KILL BASS and BOTH appended): KILL BASS, KILL BOTH
+ * just before KILL BREAK, so the round left of R8 is CHAOS, then KILL BREAK, as before them */
+static const uint8_t BKF_ORD[BKF_N] = {0u, 1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u, 9u, 10u, BKF_ARP, BKF_KIL, BKF_DST, BKF_SUB,
+                                       BKF_DRV, BKF_X2, BKF_X4, BKF_TRI, BKF_SDR, BKF_KBS, BKF_KBB, BKF_KBR, BKF_CHS};
+static uint32_t bkf_next(uint32_t f, int dir)   /* the function after (before) f in the round */
+{
+    uint32_t j;
+    for (j = 0; j < BKF_N && BKF_ORD[j] != f; j++)
+        ;
+    return BKF_ORD[(j + (dir > 0 ? 1u : BKF_N - 1u)) % BKF_N];
+}
+static uint32_t bkv_next(uint32_t v, int dir)   /* v 0 (its own / none) or 1 + a function: the next in the round */
+{
+    uint32_t j;
+    if (!v)
+        j = 0u;
+    else
+        for (j = 0; j < BKF_N && BKF_ORD[j] != v - 1u; j++)
+            ;
+    j = v ? j + 1u : 0u;                 /* (0: none, 1..: BKF_ORD's) */
+    j = (j + (dir > 0 ? 1u : BKF_N)) % (BKF_N + 1u);
+    return j ? BKF_ORD[j - 1u] + 1u : 0u;
+}
 static void bk_turn(int i, int32_t d)
 {
     int dir = d > 0 ? 1 : -1;
@@ -168,9 +191,9 @@ static void bk_turn(int i, int32_t d)
         if (i != 2)
             return;
         bk_release_all();
-        *v = (uint8_t)((selb_fn(ui.bk_sel) + (uint32_t)(dir > 0 ? 1 : BKF_N)) % (BKF_N + 1u));
+        *v = (uint8_t)bkv_next(selb_fn(ui.bk_sel), dir);
         if (ui.bk_sel == 11u && *v == 1u + BKF_ARP)   /* (the REC key: any function but ARP, as its own) */
-            *v = (uint8_t)((*v + (uint32_t)(dir > 0 ? 1 : BKF_N)) % (BKF_N + 1u));
+            *v = (uint8_t)bkv_next(*v, dir);
         bk_say();
         set_dirty = 1u;
         ui.redraw |= RG_BLOCKS | RG_FOOT;
@@ -192,9 +215,9 @@ static void bk_turn(int i, int32_t d)
     } else if (i == 2 && ui.bk_sel == 11u) {   /* (0.9.58: the REC key's own, any function but ARP; 0.9.70, FLEXOR:
                                           * NONE first (REC records), whatever the layout, its preset kept) */
         uint32_t v = rec_key_on() ? rec_fn() + 1u : 0u;
-        v = (v + (uint32_t)(dir > 0 ? 1 : BKF_N)) % (BKF_N + 1u);
+        v = bkv_next(v, dir);
         if (v == 1u + BKF_ARP)
-            v = (v + (uint32_t)(dir > 0 ? 1 : BKF_N)) % (BKF_N + 1u);
+            v = bkv_next(v, dir);
         bk_release_all();
         if (v) {
             kx2.rsv[RK_RSV] = (uint8_t)(0x80u | (v - 1u));
@@ -204,7 +227,7 @@ static void bk_turn(int i, int32_t d)
         (void)j;
         bk_say();
     } else if (i == 2) {
-        uint32_t f = (bk_fn(ui.bk_sel) + (uint32_t)(dir > 0 ? 1 : BKF_N - 1)) % BKF_N;
+        uint32_t f = bkf_next(bk_fn(ui.bk_sel), dir);
         if (bk_preset() != BKP_CUSTOM) { /* (a preset: its copy, CUSTOM, then the key) */
             for (j = 0; j < 11u; j++)
                 set.bkeys.bk[2u + j] = (uint8_t)bk_fn(j);
