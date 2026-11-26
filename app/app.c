@@ -1847,6 +1847,18 @@ void app_init(void)
             kx2.ch_sw = CH_SW;           /* (0.9.76: the CHS key's switch on) */
         }
         chaos_push();
+#ifndef PLAT_HOST                        /* (the simulator: FLEXOR LAYOUT, its scenarios') */
+        if (kx2.rsv[5] != 0xB2u) {       /* BABSZTYL (26 Nov 2026, its owner: "the new layout at once"): once, after
+                                          * its install, the BABSZTYL layout (KILL BREAK, KILL BASS first) whatever was
+                                          * in use, KILL BREAK's LATCH on; kx2.rsv[5] 0xB2 after it, kept as saved */
+            kx2.rsv[5] = 0xB2u;
+            set.bkeys.bk[0] = BK_TAG;
+            set.bkeys.bk[1] = BKP_CHOPPAH;
+            if ((kx2.rsv[KB_RSV] & 0xC0u) == KB_TAG)
+                kx2.rsv[KB_RSV] |= 4u;
+            set_dirty = 1u;
+        }
+#endif
         if (kx2.sp_tag != SP_TAG2) {     /* (a save before each break's split: KITS' bytes there, or 0.9.71's one split,
                                           * which goes to the break it was saved on) */
             uint32_t was = kx2.sp_tag == SP_TAG && kx2.split ?
