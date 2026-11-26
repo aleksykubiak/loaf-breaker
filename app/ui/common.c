@@ -469,7 +469,7 @@ static struct {
 static void page_say(void);              /* the header: the page's button and part, as its tabs (main.c) */
 #define SEQ_BRK (ui.seq_brk && !set.novice)
 static int slices_page(void) { return (ui.page != PG_SEQ || SEQ_BRK) && ui.page != PG_TRACK && ui.page != PG_OVL &&
-                                         ui.page != PG_BSEQ && ui.page != PG_BEDIT &&   /* (the BASS's: a keyboard) */
+                                         ui.page != PG_BSEQ &&   /* (the BASS's SEQ: a keyboard; EDIT: as HOME) */
                                          !(ui.page == PG_GLOBAL && ui.gpage == 3u); }   /* (GLO EFFECTS: keys 1-7) */   /* (ARP: overlays) */
 enum { RG_HEAD = 1, RG_WAVE = 2, RG_BLOCKS = 4, RG_FOOT = 8, RG_ALL = 15, RG_FX = 16 };
 

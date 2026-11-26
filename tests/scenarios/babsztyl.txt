@@ -107,3 +107,14 @@ tapkey b0
 wait 100
 expect kbrk 0
 expect bmeter >-40
+# EDIT (26 Nov): the keys as on HOME: a black key its function (KILL BASS here), not a note
+tap EDIT
+wait 200
+expect page 15
+tapkey b1
+wait 100
+expect kbas 1
+expect bnote 0
+tapkey b1
+wait 100
+expect kbas 0

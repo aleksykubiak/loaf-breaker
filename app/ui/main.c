@@ -345,7 +345,8 @@ static void input(void)
     }
     raw = keys;
     bs_keys_any(kdn, btn);               /* (SEQ held + white key 1-8, any page: the line) */
-    if (bs_page()) {                     /* the BASS's pages: the keys a keyboard (no slice, no pad) */
+    if (ui.page == PG_BSEQ) {            /* the BASS's SEQ: the keys a keyboard (no slice, no pad; BABSZTYL 26 Nov: on
+                                          * EDIT as on HOME, the slices and the black keys' functions) */
         bs_keys(keys, kdn, kup, btn);
         kdn &= ~BS_KEYS;
     } else if (btn & 1u << B_SEQ) {      /* (SEQ held elsewhere: white keys 1-8 the lines, not slices) */
@@ -758,7 +759,8 @@ static void input(void)
                 home_back();
         }
     }
-    if (bdn & 1u << B_REC && bs_page()) {   /* the BASS's: REC records into the line; SEL + REC clears it */
+    if (bdn & 1u << B_REC && ui.page == PG_BSEQ) {   /* the BASS's SEQ: REC records into the line; SEL + REC clears
+                                          * it (BABSZTYL 26 Nov: EDIT's REC as HOME's) */
         if (btn & 1u << B_SEL) {
             bs_clear();
             ui.tap_combo = 1u;
@@ -896,8 +898,8 @@ static void input(void)
     }
     /* OCT- / OCT+: pitch in semitones, repeating faster while held; both: back to 0. LOAF BREAKER: REC stopped (step by
      * step), OCT+ a REST (the step kept, the next one), OCT- a step back */
-    if (bs_page())
-        bs_oct(btn, bdn);                /* (the BASS's: the keys' octave) */
+    if (ui.page == PG_BSEQ)
+        bs_oct(btn, bdn);                /* (the BASS's SEQ: the keys' octave; EDIT: as HOME) */
     else if (ui.rec && !playing_now()) {
         if (bdn & 1u << B_OCTUP)
             rec_move(1);
@@ -1167,7 +1169,7 @@ static void leds(void)
                                              B_EDIT, B_GLO, B_HOME, B_HOME, B_SEQ, B_EDIT};   /* (TEST: KICK EQ under EDIT; 0.9.56 SETTINGS under GLO; the BASS's) */
     b |= 1u << (IS_KFX() || (ui.page == PG_GLOBAL && ui.gpage == GP_BREAK) ? B_EDIT : ui.page == PG_GLOBAL &&
                 ui.gpage == GP_FILL ? B_SEQ : PAGE_BTN[ui.page]);   /* (LOAF BREAKER: SOUNDS' BREAK, PATTERN's GROOVE) */
-    if (bs_page() ? bs.rec && (!playing_now() || (plat_ms() / 200u) & 1u) :   /* (the BASS's REC: blinking, playing) */
+    if (ui.page == PG_BSEQ ? bs.rec && (!playing_now() || (plat_ms() / 200u) & 1u) :   /* (the BASS's REC: blinking, playing) */
         rec_key_on() ? bkf_lit(rec_fn(), &st) != 0 : ui.rec != 0u)   /* (0.9.58: the REC key lit as its function) */
         b |= 1u << B_REC;
     if (set_dirty)
@@ -1661,9 +1663,9 @@ static void draw_foot(const brk_status_t *st)
     char t[16];
     draw_tabs();
     cv_begin(240, 48, C_BLACK);
-    if (bs_page())                       /* (the BASS's: the black keys are notes) */
+    if (ui.page == PG_BSEQ)              /* (the BASS's SEQ: the black keys are notes; EDIT: their functions) */
         bs_black_names();
-    for (i = 0; i < 11u && !bs_page(); i++) {   /* (LOAF BREAKER: each key's function, the layout's) */
+    for (i = 0; i < 11u && ui.page != PG_BSEQ; i++) {   /* (LOAF BREAKER: each key's function, the layout's) */
         uint32_t f = bk_fn_shown(i);
         int on = f == BKF_ARP ? arpk_on(i) : bkf_lit(f, st);
         int32_t x = 2 + (int32_t)i * 21;

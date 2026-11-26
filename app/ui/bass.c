@@ -218,7 +218,7 @@ static void bs_keys(uint32_t keys, uint32_t kdn, uint32_t kup, uint32_t btn)
 static void bs_keys_any(uint32_t kdn, uint32_t btn)
 {
     uint32_t i;
-    if (!(btn & 1u << B_SEQ) || bs_page())
+    if (!(btn & 1u << B_SEQ) || ui.page == PG_BSEQ)   /* (on SEQ: bs_keys) */
         return;
     for (i = 0; i < 8u; i++) {
         if (kdn >> WK[i] & 1u) {
@@ -771,7 +771,7 @@ static void bs_edit_band(int32_t top)
         cv_rect(x + 4, y + 44, (int32_t)(v * 48.0f + 0.5f), 3, C_HI);
     }
     cv_text(4, 166 - top, &FONT_XS, "SELECT: OSC FILTER ENV MOD  PRESETS: SOUND", C_DIM);
-    cv_text(4, 178 - top, &FONT_XS, "ALGORITHM: THE LINE   THE KEYS PLAY IT", C_DIM);
+    cv_text(4, 178 - top, &FONT_XS, "ALGORITHM: THE LINE   KEYS: AS ON HOME", C_DIM);
 }
 
 static void draw_bass(void)
