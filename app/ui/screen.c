@@ -157,8 +157,8 @@ static void grey_draw(const uint8_t *rle, uint32_t len, const uint16_t *pal, int
  * foot dark as the screen under it; held SPLASH_HOLD, zooming in slowly as it loads (its own pixels bigger: 1 to
  * SPLASH_ZOOM, towards its lettering), "by Aleksy Kubiak" under all its lettering, still */
 #define SPLASH_Y 0                       /* (the picture's top row on the screen) */
-#define SPLASH_HOLD 2000u                /* (ms) */
-#define SPLASH_ZQ 56                     /* (the zoom at the end, 1 + SPLASH_ZQ / 256: 1.22) */
+#define SPLASH_HOLD 2500u                /* (ms, from the first frame after the decoding) */
+#define SPLASH_ZQ 77                     /* (the zoom at the end, 1 + SPLASH_ZQ / 256: 1.3) */
 #define SPLASH_CX (SPLASH_W / 2)         /* (the zoom's centre: the lettering's) */
 #define SPLASH_CY (SPLASH_H * 7 / 10)
 static uint32_t splash_t;                /* when it was drawn (0: gone) */
@@ -249,6 +249,17 @@ static void intro_draw(uint32_t now)
 {
     uint32_t shown = (now - ui.intro_t0) / INTRO_STEP + 1u;
     char t[32];
+#if CH_LOGO                              /* BABSZTYL (26 Nov 2026, its owner: "only the mountain"): the start screen the
+                                          * splash's picture as its zoom ended, its credit, nothing else; PLAY as before */
+    if (!ui.intro_drawn) {
+        splash_zoom(SPLASH_HOLD);
+        ui.intro_drawn = 16u;
+    }
+    ui.redraw = 0u;
+    (void)shown;
+    (void)t;
+    return;
+#endif
     if (shown > 16u)
         shown = 16u;
     if (!ui.intro_drawn)                 /* GLOUPI BREAKS: the splash's picture away first (this screen draws in bands) */

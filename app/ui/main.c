@@ -1791,15 +1791,20 @@ void app_frame(void)
     }
     break_poll();
     if (splash_t) {                      /* LOAF BREAKER: the splash 1.5 s, then the start screen from its start */
-        if (now - splash_t < SPLASH_HOLD) {
-            static uint32_t z_drawn;     /* (BABSZTYL: the zoom, a frame each 80 ms) */
-            if (now - z_drawn >= 80u) {
+        static uint32_t z0, z_drawn;     /* (BABSZTYL: the zoom from the first frame here, the breaks decoded: the
+                                          * FM-1 spends its first seconds decoding them, the picture still; a frame
+                                          * each 60 ms) */
+        if (!z0)
+            z0 = now | 1u;
+        if (now - z0 < SPLASH_HOLD) {
+            if (now - z_drawn >= 60u) {
                 z_drawn = now;
-                splash_zoom(now - splash_t);
+                splash_zoom(now - z0);
             }
             ui.touched = 0u;
             return;
         }
+        z0 = 0u;
         splash_t = 0u;
         ui.intro_t0 = now;
         ui.intro_drawn = 0u;
